@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, View, Image, Pressable, ActivityIndicator, Alert, Platform, ScrollView, Modal, Linking, Animated } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { StatusBar } from 'expo-status-bar';
 import ResultView from './src/components/ResultView';
 import Paywall from './src/components/Paywall';
-import { getSubscriptionState, incrementFreeCount, setSubscribed, setTrialIfFirstOpen, startLocalTrial } from './src/store/subscription';
+import { getSubscriptionState, incrementFreeCount, setSubscribed, setTrialIfFirstOpen, startLocalTrial, clearAllData } from './src/store/subscription';
 import { initIAP, requestPlan, restorePurchases } from './src/services/iap';
 import { uploadImage } from './src/api/client';
 import type { AnalysisResult } from './src/types';
@@ -29,6 +30,7 @@ export default function App() {
   const [manageSubVisible, setManageSubVisible] = useState(false);
   const [privacyVisible, setPrivacyVisible] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
+  const [freeUsesLeft, setFreeUsesLeft] = useState(1);
   
   // Premium animations
   const glowAnim = React.useRef(new Animated.Value(0)).current;
@@ -41,11 +43,20 @@ export default function App() {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
   React.useEffect(() => {
-    // First open: init counters and show paywall upfront
+    // First open: init counters but DON'T show paywall
     (async () => {
+      // TEMPORARY: Clear any old trial data from previous builds
+      // Remove this after users update once
+      const versionFlag = await AsyncStorage.getItem('app.version.cleared');
+      if (!versionFlag) {
+        await clearAllData();
+        await AsyncStorage.setItem('app.version.cleared', '1');
+      }
+      
       await setTrialIfFirstOpen();
       const s = await getSubscriptionState();
       setIsSubscribed(!!s.isSubscribed);
+      setFreeUsesLeft(Math.max(0, 1 - s.freeAnalysesUsed));
       // Initialize IAP connection unless explicitly disabled via env
       try {
         const disabled = String((process as any)?.env?.EXPO_PUBLIC_IAP_DISABLED || '').toLowerCase();
@@ -53,7 +64,7 @@ export default function App() {
           await initIAP();
         }
       } catch {}
-      setPaywallVisible(true);
+      // Don't show paywall on app open - let user explore first
     })();
   }, []);
 
@@ -120,6 +131,13 @@ export default function App() {
 
   const pickFromLibrary = async () => {
     setResult(null);
+    
+    // Close the modal immediately so user sees the native picker
+    setSourceSheetOpen(false);
+    
+    // Small delay to let modal close animation complete
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
     // iOS: Ask for Photos permission. If previously denied, offer Settings shortcut.
     let perm = await ImagePicker.getMediaLibraryPermissionsAsync();
     if (!perm.granted) {
@@ -141,26 +159,35 @@ export default function App() {
         return;
       }
     }
+    
     // If user picked "Selected Photos" previously, iOS returns limited access. Proceed anyway.
     try {
       const picked = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'] as any,
-        quality: 1,
+        quality: 0.8,
         allowsEditing: false,
         exif: false,
       });
-      if (!picked.canceled) {
+      if (!picked.canceled && picked.assets && picked.assets.length > 0) {
         const asset = picked.assets[0];
         setImageUri(asset.uri);
         setAssetName(asset.fileName ?? null);
       }
-    } finally {
-      setSourceSheetOpen(false);
+    } catch (error: any) {
+      console.warn('Image picker error:', error);
+      Alert.alert('Error', 'Could not pick image. Please try again.');
     }
   };
 
   const openCamera = async () => {
     setResult(null);
+    
+    // Close the modal immediately
+    setSourceSheetOpen(false);
+    
+    // Small delay to let modal close animation complete
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
     const status = cameraPermission?.granted ? true : (await requestCameraPermission()).granted;
     if (!status) {
       Alert.alert('Permission required', 'Camera access is required to take a photo.');
@@ -168,7 +195,6 @@ export default function App() {
     }
     setCapturedPhotoUri(null);
     setCameraVisible(true);
-    setSourceSheetOpen(false);
   };
 
   const takePhoto = async () => {
@@ -198,9 +224,18 @@ export default function App() {
       // Gate: free users can analyze once per day; subscribers/trial have unlimited
       const sub = await getSubscriptionState();
       setIsSubscribed(!!sub.isSubscribed);
+      setFreeUsesLeft(Math.max(0, 1 - sub.freeAnalysesUsed));
+      
       // Daily free limit: 1 per day
       if (!sub.isSubscribed && sub.freeAnalysesUsed >= 1) {
-        setPaywallVisible(true);
+        Alert.alert(
+          'Daily Limit Reached',
+          'Free users can analyze 1 image per day. Upgrade to Premium for unlimited analyses!',
+          [
+            { text: 'Maybe Later', style: 'cancel' },
+            { text: 'Upgrade Now', onPress: () => setPaywallVisible(true) }
+          ]
+        );
         return;
       }
 
@@ -227,7 +262,11 @@ export default function App() {
 
       // Increment free count on success if not subscribed
       const state = await getSubscriptionState();
-      if (!state.isSubscribed) await incrementFreeCount();
+      if (!state.isSubscribed) {
+        await incrementFreeCount();
+        const updatedState = await getSubscriptionState();
+        setFreeUsesLeft(Math.max(0, 1 - updatedState.freeAnalysesUsed));
+      }
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'Unknown error occurred');
     } finally {
@@ -245,25 +284,46 @@ export default function App() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>Analyzer</Text>
-          <View style={styles.subtitleRow}>
-            {isSubscribed ? (
-              <Animated.View style={[styles.premiumBadge, { transform: [{ scale: badgeAnim }] }]}>
-                <Text style={styles.premiumText}>PRO</Text>
-              </Animated.View>
-            ) : null}
-            <Text style={styles.subtitle}>AI-powered vision</Text>
-          </View>
-          <View style={styles.headerActions}>
-            {!isSubscribed && (
-              <Pressable style={styles.upgradeButton} onPress={() => setPaywallVisible(true)}>
-                <Text style={styles.upgradeButtonText}>Upgrade</Text>
-              </Pressable>
-            )}
+          <View style={styles.headerTop}>
+            <View style={styles.titleContainer}>
+              <Text style={styles.title}>Analyzer</Text>
+              <View style={styles.subtitleRow}>
+                {isSubscribed ? (
+                  <Animated.View style={[styles.premiumBadge, { transform: [{ scale: badgeAnim }] }]}>
+                    <Text style={styles.premiumText}>PRO</Text>
+                  </Animated.View>
+                ) : (
+                  <View style={styles.freeBadge}>
+                    <Text style={styles.freeText}>{freeUsesLeft} FREE</Text>
+                  </View>
+                )}
+                <Text style={styles.subtitle}>AI-powered vision</Text>
+              </View>
+            </View>
             <Pressable style={styles.settingsButton} onPress={() => setSettingsVisible(true)}>
-              <Text style={styles.settingsButtonText}>Settings</Text>
+              <Text style={styles.settingsButtonText}>⚙️</Text>
             </Pressable>
           </View>
+          {!isSubscribed && (
+            <Pressable 
+              style={({ pressed }) => [
+                styles.upgradeButtonFullWidth,
+                pressed && styles.upgradeButtonPressed
+              ]} 
+              onPress={() => setPaywallVisible(true)}
+            >
+              <View style={styles.upgradeContent}>
+                <View style={styles.upgradeIconBadge}>
+                  <Text style={styles.upgradeIcon}>✨</Text>
+                </View>
+                <View style={styles.upgradeTextContainer}>
+                  <Text style={styles.upgradeTitle}>Upgrade to Pro</Text>
+                  <Text style={styles.upgradeSubtitle}>Unlimited analyses • No limits</Text>
+                </View>
+                <Text style={styles.upgradeArrow}>›</Text>
+              </View>
+            </Pressable>
+          )}
         </View>
 
         {/* Pick Image Card */}
@@ -332,7 +392,10 @@ export default function App() {
       {/* Paywall */}
       <Paywall
         visible={paywallVisible}
-        onClose={() => setPaywallVisible(false)}
+        onClose={() => {
+          // User closed without subscribing - stay free
+          setPaywallVisible(false);
+        }}
         onSubscribeMonthly={async () => {
           try {
             const ok = await requestPlan('weekly');
@@ -340,16 +403,18 @@ export default function App() {
               const s = await getSubscriptionState();
               setIsSubscribed(!!s.isSubscribed);
               setPaywallVisible(false);
+              Alert.alert('Success!', 'You now have unlimited access to all features.');
               return;
             }
             throw new Error('Purchase did not complete');
           } catch (e: any) {
-            // Fallback: local 3-day trial for development/testing without charges
-            await startLocalTrial(3);
-            const s = await getSubscriptionState();
-            setIsSubscribed(!!s.isSubscribed);
+            // Only show test mode alert, don't auto-grant trial
+            Alert.alert(
+              'Purchase Not Available',
+              'In-app purchases are not configured for this build. You can still use 1 free analysis per day.',
+              [{ text: 'OK' }]
+            );
             setPaywallVisible(false);
-            Alert.alert('Test mode', 'IAP not available in this build. Started a local 3‑day trial for testing.');
           }
         }}
         onSubscribeYearly={async () => {
@@ -359,15 +424,18 @@ export default function App() {
               const s = await getSubscriptionState();
               setIsSubscribed(!!s.isSubscribed);
               setPaywallVisible(false);
+              Alert.alert('Success!', 'You now have unlimited access to all features.');
               return;
             }
             throw new Error('Purchase did not complete');
           } catch (e: any) {
-            await startLocalTrial(3);
-            const s = await getSubscriptionState();
-            setIsSubscribed(!!s.isSubscribed);
+            // Only show test mode alert, don't auto-grant trial
+            Alert.alert(
+              'Purchase Not Available',
+              'In-app purchases are not configured for this build. You can still use 1 free analysis per day.',
+              [{ text: 'OK' }]
+            );
             setPaywallVisible(false);
-            Alert.alert('Test mode', 'IAP not available in this build. Started a local 3‑day trial for testing.');
           }
         }}
       />
@@ -618,15 +686,24 @@ const styles = StyleSheet.create({
     paddingBottom: 50,
   },
   header: {
-    marginBottom: 40,
-    position: 'relative',
+    marginBottom: 32,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  titleContainer: {
+    flex: 1,
+    marginRight: 12,
   },
   title: {
     fontSize: 42,
     fontWeight: '800',
     color: '#FFFFFF',
     letterSpacing: -1.2,
-    marginBottom: 12,
+    marginBottom: 8,
   },
   subtitleRow: {
     flexDirection: 'row',
@@ -645,44 +722,89 @@ const styles = StyleSheet.create({
     color: '#000000',
     letterSpacing: 1.2,
   },
+  freeBadge: {
+    backgroundColor: '#2A2A2A',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#444444',
+  },
+  freeText: {
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#888888',
+    letterSpacing: 1.2,
+  },
   subtitle: {
     fontSize: 15,
     color: '#888888',
     fontWeight: '500',
     letterSpacing: 0.3,
   },
-  headerActions: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
+  upgradeButtonFullWidth: {
+    backgroundColor: '#1C1C1E',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#2C2C2E',
+    overflow: 'hidden',
+  },
+  upgradeButtonPressed: {
+    opacity: 0.7,
+    transform: [{ scale: 0.98 }],
+  },
+  upgradeContent: {
     flexDirection: 'row',
-    gap: 8,
-  },
-  upgradeButton: {
-    paddingVertical: 8,
+    alignItems: 'center',
+    paddingVertical: 14,
     paddingHorizontal: 16,
-    backgroundColor: '#D4AF37',
-    borderRadius: 8,
+    gap: 12,
   },
-  upgradeButtonText: {
+  upgradeIconBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#2C2C2E',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  upgradeIcon: {
+    fontSize: 18,
+  },
+  upgradeTextContainer: {
+    flex: 1,
+  },
+  upgradeTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 2,
+  },
+  upgradeSubtitle: {
     fontSize: 13,
-    color: '#000000',
-    fontWeight: '700',
-    letterSpacing: 0.5,
+    color: '#8E8E93',
+    fontWeight: '400',
+  },
+  upgradeArrow: {
+    fontSize: 24,
+    color: '#8E8E93',
+    fontWeight: '300',
   },
   settingsButton: {
-    paddingVertical: 8,
+    paddingVertical: 10,
     paddingHorizontal: 12,
     backgroundColor: '#141414',
-    borderRadius: 8,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#2A2A2A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 44,
+    minHeight: 44,
   },
   settingsButtonText: {
-    fontSize: 13,
+    fontSize: 20,
     color: '#D4AF37',
-    fontWeight: '700',
-    letterSpacing: 0.5,
   },
   uploadCard: {
     marginBottom: 24,

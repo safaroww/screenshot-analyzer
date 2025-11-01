@@ -4,10 +4,15 @@ let cachedBaseUrl: string | null = null;
 
 function candidateBaseUrls(): string[] {
   const list: string[] = [];
+  
+  // Production API on Vercel (always try this first)
+  list.push('https://screenshot-analyzer-lovat.vercel.app/api');
+  
+  // Environment variable override (for development)
   const env = (process as any)?.env?.EXPO_PUBLIC_API_BASE_URL as string | undefined;
   if (env && env.trim()) list.push(env.trim());
 
-  // From packager URL if it's http(s)
+  // From packager URL if it's http(s) (development only)
   const scriptURL: string | undefined = (NativeModules as any)?.SourceCode?.scriptURL;
   if (scriptURL && /^https?:\/\//i.test(scriptURL)) {
     const m = scriptURL.match(/^[a-zA-Z+]+:\/\/([^/:]+)/);
@@ -20,7 +25,7 @@ function candidateBaseUrls(): string[] {
     }
   }
 
-  // Common local fallbacks
+  // Common local fallbacks (development only)
   if (Platform.OS === 'android') list.push('http://10.0.2.2:4000');
   list.push('http://localhost:4000');
   list.push('http://127.0.0.1:4000');

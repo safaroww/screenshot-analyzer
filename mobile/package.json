@@ -7,7 +7,8 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "bundle:ios": "NODE_ENV=production npx expo export:embed --platform ios --entry-file index.js --bundle-output ios/main.jsbundle --assets-dest ios --dev false"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",

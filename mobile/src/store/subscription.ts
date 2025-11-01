@@ -104,3 +104,15 @@ export async function setTrialIfFirstOpen() {
     await AsyncStorage.multiSet([[KEY_DAILY_DATE, today], [KEY_DAILY_COUNT, '0']]);
   }
 }
+
+export async function clearAllData() {
+  // Clear all subscription data (for testing/reset)
+  await AsyncStorage.multiRemove([
+    KEY_SUB,
+    KEY_COUNT_OLD,
+    KEY_DAILY_DATE,
+    KEY_DAILY_COUNT,
+    KEY_USER,
+    KEY_TRIAL_END
+  ]);
+}
