@@ -1,12 +1,11 @@
 {
   "version": 2,
-  "functions": {
-    "api/**/*.js": {
-      "runtime": "nodejs20.x",
-      "maxDuration": 30,
-      "memory": 1024
+  "builds": [
+    {
+      "src": "api/**/*.js",
+      "use": "@vercel/node"
     }
-  },
+  ],
   "routes": [
     { "src": "/health", "dest": "/api/health" },
     { "src": "/analyze", "dest": "/api/analyze" },
