@@ -1,0 +1,84 @@
+# ---- Global / OS cruft ----
+.DS_Store
+Thumbs.db
+Ehthumbs.db
+$RECYCLE.BIN/
+*.swp
+*.swo
+*.tmp
+
+# ---- Node / JS package managers ----
+node_modules/
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Keep lockfiles for reproducible installs (do NOT ignore)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# ---- Expo / React Native ----
+.expo/
+.expo-shared/
+web-build/
+dist/
+.bundle/
+
+# Metro / cache
+.expo/web/*
+.expo/web/cache/
+
+# EAS (Expo Application Services)
+.eas/
+
+# ---- Platform specific (ignored for managed Expo; remove if you eject and want to commit) ----
+# iOS
+ios/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+xcuserdata/
+DerivedData/
+build/
+Pods/
+*.xcworkspace
+
+# Android
+android/
+.gradle/
+local.properties
+captures/
+**/build/
+*.iml
+*.keystore
+*.jks
+keystore.properties
+
+# ---- IDE / Editor ----
+.vscode/
+.idea/
+*.code-workspace
+
+# ---- Tests / Coverage ----
+coverage/
+.jest/
+
+# ---- Environment / Secrets ----
+.env
+.env.*
+server/.env
+mobile/.env
+
+# ---- Bundles / Artifacts ----
+*.apk
+*.aab
+*.ipa
+
+# ---- Misc ----
+*.orig
+*.rej

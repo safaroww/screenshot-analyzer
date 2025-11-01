@@ -1,0 +1,111 @@
+# In‑App Purchases: Realistic testing without spending money
+
+This app uses `react-native-iap` for subscriptions (weekly and yearly). You can test end‑to‑end, on real devices, with no charges by using the platforms’ sandbox/testing flows.
+
+Products used by the app:
+- Weekly: `pro_weekly` (override via `EXPO_PUBLIC_IAP_WEEKLY_ID`)
+- Yearly: `pro_yearly` (override via `EXPO_PUBLIC_IAP_YEARLY_ID`)
+
+The UI also falls back to a local 3‑day trial when IAP isn’t available (e.g., running in Expo Go).
+
+## iOS (App Store Sandbox)
+
+You’ll need a build that includes the IAP native code (Expo Go does not). Use a Dev Client or TestFlight.
+
+1) Configure products in App Store Connect
+- In‑App Purchases → Auto‑renewable subscriptions
+- Create two products with IDs. Example IDs:
+  - `com.yourcompany.analyzer.pro_weekly`
+  - `com.yourcompany.analyzer.pro_yearly`
+  Use any IDs you like, but they must match what the app requests.
+- Add them to a Subscription Group and submit for review (you can still test sandbox before review completes)
+
+2) Create a Sandbox Tester
+- App Store Connect → Users and Access → Sandbox Testers → Add
+- Use a real email you can access; Apple ID must not exist already
+
+3) Make sure bundle identifiers are stable
+- In `app.json`, set:
+  - `ios.bundleIdentifier` (e.g., `com.yourcompany.analyzer`)
+  - `android.package` (e.g., `com.yourcompany.analyzer`)
+  Product IDs in the stores are tied to these identifiers.
+
+4) Build an app that contains IAP
+- Add plugin (already in `app.json`):
+  ```json
+  { "expo": { "plugins": ["react-native-iap"] } }
+  ```
+- Build a Dev Client and install on device:
+  ```bash
+  cd mobile
+  npx expo run:ios # or: eas build -p ios --profile development
+  ```
+  Open the project in Xcode if needed and run on a physical device.
+
+5) Test a purchase
+- On the test device: Sign OUT of your personal App Store account in iOS Settings
+- Launch the app → open Paywall → choose plan
+- When asked to sign in, use the Sandbox tester Apple ID
+- Apple’s sandbox does not charge money; subscription periods are accelerated (e.g., 1 week ≈ 3 minutes)
+
+6) Restore purchases
+- In the app Settings → "Restore Purchases"
+
+Optional: StoreKit Testing in Xcode
+- You can also use a StoreKit Configuration file in Xcode to simulate purchases in the Simulator—no Apple ID required.
+
+## Android (Google Play test cards)
+
+Android also requires an installed build with billing capabilities.
+
+1) Create products in Google Play Console
+- Monetize → Products → Subscriptions
+- Create two SKUs matching your choice (e.g., `com.yourcompany.analyzer.pro_weekly`, `com.yourcompany.analyzer.pro_yearly`)
+
+2) Add license testers
+- Play Console → Settings → Developer Account → License testing
+- Add Gmail accounts you will test with
+
+3) Upload an internal testing build
+- Build an Android APK/AAB and upload to an internal testing track (or use Internal App Sharing)
+- Opt‑in your tester account to the track and install the app from Play
+
+4) Test a purchase
+- On the test device, sign into Play with a tester account
+- In‑app purchase will show a test card (e.g., "Test card, always approves"); no charges occur
+
+5) Restore purchases
+- In the app Settings → "Restore Purchases"
+
+## Dev/Expo Go fallback
+
+If you run in Expo Go or a simulator without IAP, the paywall will start a local 3‑day trial instead of a real purchase. This is for quick UI/testing only; build a Dev Client/TestFlight for real IAP flows.
+
+To silence NitroModules errors in Expo Go, disable IAP at runtime:
+
+```bash
+export EXPO_PUBLIC_IAP_DISABLED=1
+npx expo start --ios
+```
+
+When you’re ready to test real IAP, unset the variable and run a Dev Client/TestFlight/Play build.
+
+## Point the app to your exact SKUs (optional)
+
+Instead of editing code, set environment variables before starting your build/bundle:
+
+```bash
+export EXPO_PUBLIC_IAP_WEEKLY_ID="com.yourcompany.analyzer.pro_weekly"
+export EXPO_PUBLIC_IAP_YEARLY_ID="com.yourcompany.analyzer.pro_yearly"
+npx expo start --ios
+```
+
+For EAS builds, add these to your project’s EAS environment secrets/variables.
+
+## Server validation (optional, later)
+
+For production, add backend receipt validation to prevent fraud:
+- iOS: Validate the App Store JWS/receipt with Apple
+- Android: Validate purchase tokens via Google Play Developer API
+
+For sandbox testing, local validation is sufficient and no money is charged.

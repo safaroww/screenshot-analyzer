@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "Screenshot Summarize",
+    "slug": "screenshot-summarize",
+    "scheme": "screenshot-summarize",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.safaroww.analyzer",
+      "buildNumber": "1.0.0",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Allow camera access to take a photo for analysis.",
+        "NSPhotoLibraryUsageDescription": "Allow access to your photos to select screenshots for analysis."
+      }
+    },
+    "android": {
+      "package": "com.safaroww.analyzer"
+    },
+    "plugins": [
+      "react-native-iap"
+    ]
+  }
+}
