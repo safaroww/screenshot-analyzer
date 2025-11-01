@@ -817,10 +817,10 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.96 }],
   },
   settingsButtonText: {
-    fontSize: 24,
+    fontSize: 18,
     color: '#FFFFFF',
     fontWeight: '600',
-    letterSpacing: 2,
+    letterSpacing: 1.5,
   },
   uploadCard: {
     marginBottom: 24,
