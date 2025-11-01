@@ -300,8 +300,14 @@ export default function App() {
                 <Text style={styles.subtitle}>AI-powered vision</Text>
               </View>
             </View>
-            <Pressable style={styles.settingsButton} onPress={() => setSettingsVisible(true)}>
-              <Text style={styles.settingsButtonText}>⚙️</Text>
+            <Pressable 
+              style={({ pressed }) => [
+                styles.settingsButton,
+                pressed && styles.settingsButtonPressed
+              ]} 
+              onPress={() => setSettingsVisible(true)}
+            >
+              <Text style={styles.settingsButtonText}>•••</Text>
             </Pressable>
           </View>
           {!isSubscribed && (
@@ -792,19 +798,29 @@ const styles = StyleSheet.create({
   },
   settingsButton: {
     paddingVertical: 10,
-    paddingHorizontal: 12,
-    backgroundColor: '#141414',
-    borderRadius: 10,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#2A2A2A',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
     minWidth: 44,
     minHeight: 44,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  settingsButtonPressed: {
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    transform: [{ scale: 0.96 }],
   },
   settingsButtonText: {
-    fontSize: 20,
-    color: '#D4AF37',
+    fontSize: 24,
+    color: '#FFFFFF',
+    fontWeight: '600',
+    letterSpacing: 2,
   },
   uploadCard: {
     marginBottom: 24,

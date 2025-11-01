@@ -6,11 +6,11 @@ import { setSubscribed } from '../store/subscription';
 // Keep these stable across platforms.
 const PUB_ENV = ((process as any)?.env || {}) as Record<string, string | undefined>;
 export const SUBS_IDS = {
-	weekly: (PUB_ENV.EXPO_PUBLIC_IAP_WEEKLY_ID || 'pro_weekly') as string,
+	monthly: (PUB_ENV.EXPO_PUBLIC_IAP_MONTHLY_ID || 'pro_monthly') as string,
 	yearly: (PUB_ENV.EXPO_PUBLIC_IAP_YEARLY_ID || 'pro_yearly') as string,
 } as const;
 
-export type Plan = keyof typeof SUBS_IDS; // 'weekly' | 'yearly'
+export type Plan = keyof typeof SUBS_IDS; // 'monthly' | 'yearly'
 
 // Dynamically loaded IAP module to avoid crashing in Expo Go (unsupported NitroModules)
 let RNIap: any = null;

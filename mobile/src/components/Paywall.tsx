@@ -11,7 +11,7 @@ type Props = {
 
 export default function Paywall({ visible, onClose, onSubscribeMonthly, onSubscribeYearly }: Props) {
   const [canClose, setCanClose] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState<'weekly' | 'yearly'>('yearly');
+  const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'yearly'>('yearly');
 
   useEffect(() => {
     if (!visible) return;
@@ -21,7 +21,7 @@ export default function Paywall({ visible, onClose, onSubscribeMonthly, onSubscr
   }, [visible]);
 
   const handleStartTrial = () => {
-    if (selectedPlan === 'weekly') {
+    if (selectedPlan === 'monthly') {
       onSubscribeMonthly();
     } else {
       onSubscribeYearly();
@@ -43,11 +43,11 @@ export default function Paywall({ visible, onClose, onSubscribeMonthly, onSubscr
             {/* Plan Toggle */}
             <View style={styles.planToggle}>
               <Pressable
-                style={[styles.toggleButton, selectedPlan === 'weekly' && styles.toggleButtonActive]}
-                onPress={() => setSelectedPlan('weekly')}
+                style={[styles.toggleButton, selectedPlan === 'monthly' && styles.toggleButtonActive]}
+                onPress={() => setSelectedPlan('monthly')}
               >
-                <Text style={[styles.toggleText, selectedPlan === 'weekly' && styles.toggleTextActive]}>
-                  Pro
+                <Text style={[styles.toggleText, selectedPlan === 'monthly' && styles.toggleTextActive]}>
+                  Monthly
                 </Text>
               </Pressable>
               <Pressable
@@ -55,7 +55,7 @@ export default function Paywall({ visible, onClose, onSubscribeMonthly, onSubscr
                 onPress={() => setSelectedPlan('yearly')}
               >
                 <Text style={[styles.toggleText, selectedPlan === 'yearly' && styles.toggleTextActive]}>
-                  Max
+                  Yearly
                 </Text>
               </Pressable>
             </View>
@@ -71,18 +71,22 @@ export default function Paywall({ visible, onClose, onSubscribeMonthly, onSubscr
 
           {/* Plans */}
           <View style={styles.plans}>
-            {/* Weekly Plan */}
+            {/* Monthly Plan */}
             <Pressable
-              style={[styles.planCard, selectedPlan === 'weekly' && styles.planCardSelected]}
-              onPress={() => setSelectedPlan('weekly')}
+              style={[styles.planCard, selectedPlan === 'monthly' && styles.planCardSelected]}
+              onPress={() => setSelectedPlan('monthly')}
             >
+              {selectedPlan === 'monthly' && <View style={styles.glowEffect} />}
+              <View style={styles.trialBadge}>
+                <Text style={styles.trialBadgeText}>1 week free</Text>
+              </View>
               <View style={styles.radioOuter}>
-                {selectedPlan === 'weekly' && <View style={styles.radioInner} />}
+                {selectedPlan === 'monthly' && <View style={styles.radioInner} />}
               </View>
               <View style={styles.planInfo}>
-                <Text style={styles.planPrice}>US$1.99 / week</Text>
+                <Text style={styles.planPrice}>$8.99 / month</Text>
                 <Text style={styles.planBilled}>
-                  US$1.99/week, billed weekly as US$1.99/week
+                  Then $8.99/month after free trial
                 </Text>
               </View>
             </Pressable>
@@ -94,15 +98,15 @@ export default function Paywall({ visible, onClose, onSubscribeMonthly, onSubscr
             >
               {selectedPlan === 'yearly' && <View style={styles.glowEffect} />}
               <View style={styles.trialBadge}>
-                <Text style={styles.trialBadgeText}>3-day free trial</Text>
+                <Text style={styles.trialBadgeText}>1 week free</Text>
               </View>
               <View style={styles.radioOuter}>
                 {selectedPlan === 'yearly' && <View style={styles.radioInner} />}
               </View>
               <View style={styles.planInfo}>
-                <Text style={styles.planPrice}>US$34.99 / year</Text>
+                <Text style={styles.planPrice}>$59.99 / year</Text>
                 <Text style={styles.planBilled}>
-                  US$0.67/week, billed yearly as US$34.99/year
+                  $4.99/month, then $59.99/year after free trial
                 </Text>
               </View>
             </Pressable>
