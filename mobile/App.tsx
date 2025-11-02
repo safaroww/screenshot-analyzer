@@ -404,7 +404,7 @@ export default function App() {
         }}
         onSubscribeMonthly={async () => {
           try {
-            const ok = await requestPlan('weekly');
+            const ok = await requestPlan('monthly');
             if (ok) {
               const s = await getSubscriptionState();
               setIsSubscribed(!!s.isSubscribed);
@@ -414,10 +414,11 @@ export default function App() {
             }
             throw new Error('Purchase did not complete');
           } catch (e: any) {
-            // Only show test mode alert, don't auto-grant trial
+            // Show actual error for debugging
+            console.error('Monthly IAP Error:', e);
             Alert.alert(
-              'Purchase Not Available',
-              'In-app purchases are not configured for this build. You can still use 1 free analysis per day.',
+              'Purchase Error',
+              e?.message || 'Unable to process purchase. Please try again.',
               [{ text: 'OK' }]
             );
             setPaywallVisible(false);
@@ -435,10 +436,11 @@ export default function App() {
             }
             throw new Error('Purchase did not complete');
           } catch (e: any) {
-            // Only show test mode alert, don't auto-grant trial
+            // Show actual error for debugging
+            console.error('Yearly IAP Error:', e);
             Alert.alert(
-              'Purchase Not Available',
-              'In-app purchases are not configured for this build. You can still use 1 free analysis per day.',
+              'Purchase Error',
+              e?.message || 'Unable to process purchase. Please try again.',
               [{ text: 'OK' }]
             );
             setPaywallVisible(false);

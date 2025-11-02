@@ -6,8 +6,8 @@ import { setSubscribed } from '../store/subscription';
 // Keep these stable across platforms.
 const PUB_ENV = ((process as any)?.env || {}) as Record<string, string | undefined>;
 export const SUBS_IDS = {
-	monthly: (PUB_ENV.EXPO_PUBLIC_IAP_MONTHLY_ID || 'pro_monthly') as string,
-	yearly: (PUB_ENV.EXPO_PUBLIC_IAP_YEARLY_ID || 'pro_yearly') as string,
+	monthly: (PUB_ENV.EXPO_PUBLIC_IAP_MONTHLY_ID || 'com.asif.screenshotanalyzer.promonthly') as string,
+	yearly: (PUB_ENV.EXPO_PUBLIC_IAP_YEARLY_ID || 'com.asif.screenshotanalyzer.proyearly') as string,
 } as const;
 
 export type Plan = keyof typeof SUBS_IDS; // 'monthly' | 'yearly'
@@ -37,11 +37,26 @@ export async function initIAP() {
 		return;
 	}
 
-	// Load products/subscriptions if possible
+	// Load products/subscriptions if possible (handle RN-IAP API differences)
 		try {
-				const res = await RNIap.fetchProducts({ skus: Object.values(SUBS_IDS), type: 'subs' });
-				cachedSubs = Array.isArray(res) ? (res as any[]) : [];
-		} catch {}
+			// Preferred: getSubscriptions (v14+)
+			if (typeof RNIap.getSubscriptions === 'function') {
+				const res = await RNIap.getSubscriptions(Object.values(SUBS_IDS));
+				cachedSubs = Array.isArray(res) ? res : [];
+			} else if (typeof RNIap.getProducts === 'function') {
+				// Fallback: getProducts (older variants)
+				const res = await RNIap.getProducts(Object.values(SUBS_IDS));
+				cachedSubs = Array.isArray(res) ? res : [];
+			} else if (typeof RNIap.fetchProducts === 'function') {
+				// Older API signature fallback
+				try {
+					const res = await RNIap.fetchProducts({ skus: Object.values(SUBS_IDS), type: 'subs' });
+					cachedSubs = Array.isArray(res) ? (res as any[]) : [];
+				} catch {}
+			}
+		} catch (err) {
+			// Ignore product load failures in unsupported environments
+		}
 
 	// Listen for purchases
 			purchaseUpdateSub = RNIap.purchaseUpdatedListener(async (purchase: any) => {
@@ -85,13 +100,21 @@ export async function requestPlan(plan: Plan): Promise<boolean> {
 	if (!initialized) throw new Error('In-app purchases are not available in this build. Install a Dev Client or TestFlight build.');
 
 		try {
-			await RNIap.requestPurchase({
-				type: 'subs',
-				request: {
-					ios: { sku, andDangerouslyFinishTransactionAutomatically: false },
-					android: { skus: [sku] },
-				},
-			});
+			// Subscriptions should use requestSubscription on iOS
+			if (typeof RNIap.requestSubscription === 'function') {
+				// iOS requires subscription requests with specific parameters
+				await RNIap.requestSubscription({
+					sku: sku,
+					...(Platform.OS === 'ios' && {
+						andDangerouslyFinishTransactionAutomaticallyIOS: false,
+					}),
+				});
+			} else if (typeof RNIap.requestPurchase === 'function') {
+				// Fallback for older API shapes
+				await RNIap.requestPurchase({ sku, andDangerouslyFinishTransactionAutomaticallyIOS: false });
+			} else {
+				throw new Error('IAP API is not available in this environment');
+			}
 		// Success path is handled by purchaseUpdatedListener setting subscribed
 		// Wait briefly for listener to run
 		await new Promise((r) => setTimeout(r, 1200));
