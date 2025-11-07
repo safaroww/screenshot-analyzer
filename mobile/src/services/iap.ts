@@ -1,21 +1,22 @@
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 import { setSubscribed } from '../store/subscription';
 
 // Product identifiers created in App Store Connect / Google Play Console
 // Keep these stable across platforms.
-const PUB_ENV = ((process as any)?.env || {}) as Record<string, string | undefined>;
+const extra = Constants.expoConfig?.extra || {};
 export const SUBS_IDS = {
-	monthly: (PUB_ENV.EXPO_PUBLIC_IAP_MONTHLY_ID || 'com.asif.screenshotanalyzer.promonthly') as string,
-	yearly: (PUB_ENV.EXPO_PUBLIC_IAP_YEARLY_ID || 'com.asif.screenshotanalyzer.proyearly') as string,
+	monthly: (extra.EXPO_PUBLIC_IAP_MONTHLY_ID || 'com.asif.screenshotanalyzer.promonthly') as string,
+	yearly: (extra.EXPO_PUBLIC_IAP_YEARLY_ID || 'com.asif.screenshotanalyzer.proyearly') as string,
 } as const;
 
 export type Plan = keyof typeof SUBS_IDS; // 'monthly' | 'yearly'
 
 // Dynamically loaded IAP module to avoid crashing in Expo Go (unsupported NitroModules)
 let RNIap: any = null;
-const IAP_DISABLED = String((process as any)?.env?.EXPO_PUBLIC_IAP_DISABLED || '').toLowerCase() === 'true' ||
-	(process as any)?.env?.EXPO_PUBLIC_IAP_DISABLED === '1';
+const IAP_DISABLED = String(extra.EXPO_PUBLIC_IAP_DISABLED || '').toLowerCase() === 'true' ||
+	extra.EXPO_PUBLIC_IAP_DISABLED === '1';
 let purchaseUpdateSub: any | null = null;
 let purchaseErrorSub: any | null = null;
 let initialized = false;
@@ -111,6 +112,77 @@ export function getSubscriptionsCached() {
 	return cachedSubs;
 }
 
+export type IapDebugInfo = {
+	initialized: boolean;
+	iapDisabled: boolean;
+	envMonthlyId?: string;
+	envYearlyId?: string;
+	cachedProducts: Array<{ productId: string; title?: string; price?: string }>;
+	platform: string;
+	subscriptionCount: number;
+	hints: string[];
+	timestamp: string;
+};
+
+export async function collectIapDebugInfo(): Promise<IapDebugInfo> {
+	const hints: string[] = [];
+	const info: IapDebugInfo = {
+		initialized,
+		iapDisabled: IAP_DISABLED,
+		envMonthlyId: extra.EXPO_PUBLIC_IAP_MONTHLY_ID,
+		envYearlyId: extra.EXPO_PUBLIC_IAP_YEARLY_ID,
+		cachedProducts: [],
+		platform: Platform.OS,
+		subscriptionCount: 0,
+		hints,
+		timestamp: new Date().toISOString(),
+	};
+
+	if (IAP_DISABLED) {
+		hints.push('IAP disabled via EXPO_PUBLIC_IAP_DISABLED env flag.');
+		return info;
+	}
+
+	try {
+		await initIAP();
+	} catch (err: any) {
+		hints.push(`initIAP threw: ${err?.message || err}`);
+	}
+
+	if (!RNIap) {
+		hints.push('react-native-iap module is not available (likely running in Expo Go).');
+		return info;
+	}
+
+	try {
+		if (typeof RNIap.getSubscriptions === 'function') {
+			const refreshed = await RNIap.getSubscriptions(Object.values(SUBS_IDS));
+			cachedSubs = Array.isArray(refreshed) ? refreshed : [];
+		} else if (typeof RNIap.getProducts === 'function') {
+			const refreshed = await RNIap.getProducts(Object.values(SUBS_IDS));
+			cachedSubs = Array.isArray(refreshed) ? refreshed : [];
+		}
+	} catch (err: any) {
+		hints.push(`Product refresh failed: ${err?.message || err}`);
+	}
+
+	info.initialized = initialized;
+	info.cachedProducts = (cachedSubs || []).map((p: any) => ({
+		productId: p?.productId || p?.productIdentifier || 'unknown',
+		title: p?.title,
+		price: p?.localizedPrice,
+	}));
+	info.subscriptionCount = info.cachedProducts.length;
+
+	if (!info.cachedProducts.length) {
+		hints.push(
+			'No products were returned by App Store. Make sure: (1) the subscriptions are attached to this app version in App Store Connect → In-App Purchases and Subscriptions, (2) their status is Ready to Submit or higher, and (3) Paid Apps agreement is active.'
+		);
+	}
+
+	return info;
+}
+
 export async function requestPlan(plan: Plan): Promise<boolean> {
 	const sku = SUBS_IDS[plan];
 	console.log('[IAP] 🛒 Requesting purchase for plan:', plan, 'SKU:', sku);
@@ -128,6 +200,28 @@ export async function requestPlan(plan: Plan): Promise<boolean> {
 
 	console.log('[IAP] Checking if products are loaded...');
 	console.log('[IAP] Cached products:', cachedSubs.length, cachedSubs.map((p: any) => p.productId));
+
+	// Refresh if the requested SKU has not been seen yet
+	if (!(cachedSubs || []).some((p: any) => (p?.productId || p?.productIdentifier) === sku)) {
+		try {
+			if (typeof RNIap?.getSubscriptions === 'function') {
+				const refreshed = await RNIap.getSubscriptions(Object.values(SUBS_IDS));
+				cachedSubs = Array.isArray(refreshed) ? refreshed : [];
+			} else if (typeof RNIap?.getProducts === 'function') {
+				const refreshed = await RNIap.getProducts(Object.values(SUBS_IDS));
+				cachedSubs = Array.isArray(refreshed) ? refreshed : [];
+			}
+		} catch (err: any) {
+			console.warn('[IAP] Unable to refresh products for purchase:', err?.message || err);
+		}
+		const newList: string[] = (cachedSubs || []).map((p: any) => p.productId || p.productIdentifier).filter(Boolean);
+		console.log('[IAP] Products after refresh attempt:', newList);
+		if (!newList.includes(sku)) {
+			throw new Error(
+				'Product not found on App Store. Confirm the subscriptions are attached to this app version in App Store Connect, their status is Ready to Submit+, and agreements/tax/banking are active.'
+			);
+		}
+	}
 
 		try {
 			// Subscriptions should use requestSubscription on iOS

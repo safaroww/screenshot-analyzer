@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { StyleSheet, Text, View, Image, Pressable, ActivityIndicator, Alert, Platform, ScrollView, Modal, Linking, Animated } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -8,7 +8,8 @@ import { StatusBar } from 'expo-status-bar';
 import ResultView from './src/components/ResultView';
 import Paywall from './src/components/Paywall';
 import { getSubscriptionState, incrementFreeCount, setSubscribed, setTrialIfFirstOpen, startLocalTrial, clearAllData } from './src/store/subscription';
-import { initIAP, requestPlan, restorePurchases } from './src/services/iap';
+import { initIAP, requestPlan, restorePurchases, collectIapDebugInfo } from './src/services/iap';
+import type { IapDebugInfo } from './src/services/iap';
 import { uploadImage } from './src/api/client';
 import type { AnalysisResult } from './src/types';
 
@@ -31,6 +32,9 @@ export default function App() {
   const [privacyVisible, setPrivacyVisible] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [freeUsesLeft, setFreeUsesLeft] = useState(1);
+  const [iapDebugVisible, setIapDebugVisible] = useState(false);
+  const [iapDebugLoading, setIapDebugLoading] = useState(false);
+  const [iapDebugInfo, setIapDebugInfo] = useState<IapDebugInfo | null>(null);
   
   // Premium animations
   const glowAnim = React.useRef(new Animated.Value(0)).current;
@@ -124,6 +128,33 @@ export default function App() {
       clearTimeout(t2);
     };
   }, [loading]);
+
+  const ensureProductAvailable = useCallback(async (plan: 'monthly' | 'yearly') => {
+    try {
+      const snapshot = await collectIapDebugInfo();
+      setIapDebugInfo(snapshot);
+      const sku = plan === 'monthly' ? snapshot.envMonthlyId : snapshot.envYearlyId;
+      const availableSkus = snapshot.cachedProducts.map((p) => p.productId);
+      if (!sku) {
+        Alert.alert(
+          'Missing product ID',
+          `The ${plan} product ID is empty in this build. Double-check your .env and EAS/Expo config before rebuilding.`
+        );
+        return false;
+      }
+      if (!availableSkus.includes(sku)) {
+        Alert.alert(
+          'Purchases not ready',
+          'The App Store has not returned this subscription yet. Reinstall from TestFlight and ensure the subscription is attached to the current version in App Store Connect.'
+        );
+        return false;
+      }
+      return true;
+    } catch (err: any) {
+      Alert.alert('Purchase Error', err?.message || 'Unable to verify in-app purchase configuration.');
+      return false;
+    }
+  }, []);
 
   const openSourceChooser = () => {
     setSourceSheetOpen(true);
@@ -404,6 +435,8 @@ export default function App() {
         }}
         onSubscribeMonthly={async () => {
           try {
+            const ready = await ensureProductAvailable('monthly');
+            if (!ready) return;
             const ok = await requestPlan('monthly');
             if (ok) {
               const s = await getSubscriptionState();
@@ -426,6 +459,8 @@ export default function App() {
         }}
         onSubscribeYearly={async () => {
           try {
+            const ready = await ensureProductAvailable('yearly');
+            if (!ready) return;
             const ok = await requestPlan('yearly');
             if (ok) {
               const s = await getSubscriptionState();
@@ -559,6 +594,35 @@ export default function App() {
           <Pressable
             style={styles.sheetButton}
             onPress={async () => {
+              setSettingsVisible(false);
+              setIapDebugVisible(true);
+              setIapDebugLoading(true);
+              try {
+                const snapshot = await collectIapDebugInfo();
+                setIapDebugInfo(snapshot);
+              } catch (err: any) {
+                const fallback: IapDebugInfo = {
+                  initialized: false,
+                  iapDisabled: false,
+                  envMonthlyId: (process as any)?.env?.EXPO_PUBLIC_IAP_MONTHLY_ID,
+                  envYearlyId: (process as any)?.env?.EXPO_PUBLIC_IAP_YEARLY_ID,
+                  cachedProducts: [],
+                  platform: Platform.OS,
+                  subscriptionCount: 0,
+                  hints: [err?.message || 'Failed to collect IAP debug info.'],
+                  timestamp: new Date().toISOString(),
+                };
+                setIapDebugInfo(fallback);
+              } finally {
+                setIapDebugLoading(false);
+              }
+            }}
+          >
+            <Text style={styles.sheetButtonText}>Debug Purchases</Text>
+          </Pressable>
+          <Pressable
+            style={styles.sheetButton}
+            onPress={async () => {
               try {
                 const restored = await restorePurchases();
                 const s = await getSubscriptionState();
@@ -613,6 +677,58 @@ export default function App() {
             <Text style={styles.infoSmall}>
               Refunds are handled by Apple at reportaproblem.apple.com
             </Text>
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* IAP Debug - full screen */}
+      <Modal
+        visible={iapDebugVisible}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setIapDebugVisible(false)}
+      >
+        <View style={styles.infoRoot}>
+          <View style={styles.infoHeader}>
+            <Pressable onPress={() => setIapDebugVisible(false)} style={styles.infoClose} hitSlop={12}>
+              <Text style={styles.infoCloseText}>Close</Text>
+            </Pressable>
+            <Text style={styles.infoTitle}>Purchase Debug Info</Text>
+          </View>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.infoContent}>
+            {iapDebugLoading ? (
+              <View style={{ alignItems: 'center', gap: 12 }}>
+                <ActivityIndicator color="#D4AF37" size="small" />
+                <Text style={styles.infoParagraph}>Collecting data…</Text>
+              </View>
+            ) : (
+              <>
+                <Text style={styles.infoParagraph}>Collected: {iapDebugInfo?.timestamp ?? '—'}</Text>
+                <Text style={styles.infoParagraph}>Platform: {Platform.OS}</Text>
+                <Text style={styles.infoParagraph}>Initialized: {iapDebugInfo?.initialized ? 'Yes' : 'No'}</Text>
+                <Text style={styles.infoParagraph}>IAP Disabled via env: {iapDebugInfo?.iapDisabled ? 'Yes' : 'No'}</Text>
+                <Text style={styles.infoParagraph}>Monthly SKU (env): {iapDebugInfo?.envMonthlyId ?? '—'}</Text>
+                <Text style={styles.infoParagraph}>Yearly SKU (env): {iapDebugInfo?.envYearlyId ?? '—'}</Text>
+                <Text style={styles.infoParagraph}>Products returned: {iapDebugInfo?.subscriptionCount ?? 0}</Text>
+                {(iapDebugInfo?.cachedProducts ?? []).length === 0 ? (
+                  <Text style={styles.infoParagraph}>No products fetched from store.</Text>
+                ) : (
+                  (iapDebugInfo?.cachedProducts ?? []).map((prod, idx) => (
+                    <View key={`${prod.productId}-${idx}`} style={{ marginBottom: 8 }}>
+                      <Text style={styles.infoParagraph}>• {prod.productId}</Text>
+                      {prod.title ? (
+                        <Text style={styles.infoSmall}>{prod.title}{prod.price ? ` — ${prod.price}` : ''}</Text>
+                      ) : null}
+                    </View>
+                  ))
+                )}
+                {(iapDebugInfo?.hints ?? []).map((hint, idx) => (
+                  <Text key={idx} style={[styles.infoParagraph, { color: '#F5A623' }]}>
+                    Hint {idx + 1}: {hint}
+                  </Text>
+                ))}
+              </>
+            )}
           </ScrollView>
         </View>
       </Modal>
