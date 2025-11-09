@@ -36,17 +36,17 @@ dist/
 .eas/
 
 # ---- Platform specific (ignored for managed Expo; remove if you eject and want to commit) ----
-# iOS
-ios/
+# iOS - MODIFIED: Keep ios/ folder but ignore build artifacts
+# ios/
 *.pbxuser
 *.mode1v3
 *.mode2v3
 *.perspectivev3
-xcuserdata/
-DerivedData/
-build/
-Pods/
-*.xcworkspace
+ios/**/xcuserdata/
+ios/**/DerivedData/
+ios/**/build/
+ios/Pods/
+# *.xcworkspace - KEEP workspace file for migration
 
 # Android
 android/
