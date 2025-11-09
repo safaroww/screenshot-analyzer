@@ -17,9 +17,6 @@ module.exports = {
         NSPhotoLibraryUsageDescription: "Allow access to your photos to select screenshots for analysis."
       }
     },
-    android: {
-      package: "com.safaroww.analyzer"
-    },
     plugins: [
       "react-native-iap"
     ],

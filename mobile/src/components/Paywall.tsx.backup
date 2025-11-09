@@ -1,6 +1,7 @@
 ﻿import React, { useEffect, useState } from 'react';
-import { Modal, View, Text, StyleSheet, Pressable, Platform, ScrollView } from 'react-native';
+import { Modal, View, Text, StyleSheet, Pressable, Platform, ScrollView, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 
 type Props = {
   visible: boolean;
@@ -12,12 +13,44 @@ type Props = {
 export default function Paywall({ visible, onClose, onSubscribeMonthly, onSubscribeYearly }: Props) {
   const [canClose, setCanClose] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'yearly'>('yearly');
+  
+  // Premium animations
+  const shimmerAnim = React.useRef(new Animated.Value(0)).current;
+  const scaleAnim = React.useRef(new Animated.Value(0.95)).current;
 
   useEffect(() => {
     if (!visible) return;
     setCanClose(false);
     const t = setTimeout(() => setCanClose(true), 5000);
-    return () => clearTimeout(t);
+    
+    // Entrance animation
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 50,
+      friction: 7,
+    }).start();
+    
+    // Shimmer animation for badges
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmerAnim, {
+          toValue: 1,
+          duration: 2000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(shimmerAnim, {
+          toValue: 0,
+          duration: 2000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+    
+    return () => {
+      clearTimeout(t);
+      scaleAnim.setValue(0.95);
+    };
   }, [visible]);
 
   const handleStartTrial = () => {
@@ -29,17 +62,34 @@ export default function Paywall({ visible, onClose, onSubscribeMonthly, onSubscr
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={() => canClose && onClose()}>
-      <SafeAreaView style={styles.container}>
-        <ScrollView 
-          contentContainerStyle={styles.scrollContent} 
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.badge}>Pro plan</Text>
-            <Text style={styles.title}>Efficient.{'\n'}Accessible.</Text>
-          </View>
+    <Modal visible={visible} animationType="fade" presentationStyle="fullScreen" onRequestClose={() => canClose && onClose()}>
+      <LinearGradient
+        colors={['#0A0A0A', '#1A1520', '#0A0A0A']}
+        style={styles.gradientBackground}
+      >
+        <SafeAreaView style={styles.container}>
+          <Animated.View style={[styles.content, { transform: [{ scale: scaleAnim }] }]}>
+            <ScrollView 
+              contentContainerStyle={styles.scrollContent} 
+              showsVerticalScrollIndicator={false}
+            >
+              {/* Premium Header */}
+              <View style={styles.header}>
+                <LinearGradient
+                  colors={['#FFD700', '#FFA500', '#FFD700']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.premiumBadgeGradient}
+                >
+                  <Text style={styles.badge}>✨ PREMIUM ACCESS</Text>
+                </LinearGradient>
+                
+                <Text style={styles.title}>
+                  Unlimited{'\n'}
+                  <Text style={styles.titleHighlight}>Analysis</Text>
+                </Text>
+                <Text style={styles.subtitle}>Join thousands of pro users</Text>
+              </View>
 
           {/* Features */}
           <View style={styles.features}>
@@ -49,44 +99,61 @@ export default function Paywall({ visible, onClose, onSubscribeMonthly, onSubscr
             <FeatureRow icon="🔒" title="Privacy First" />
           </View>
 
-          {/* Plans */}
+          {/* Plans - Both visible */}
           <View style={styles.plans}>
+            {/* Yearly Plan - RECOMMENDED */}
+            <Pressable
+              style={[styles.planCard, selectedPlan === 'yearly' && styles.planCardSelected]}
+              onPress={() => setSelectedPlan('yearly')}
+            >
+              {selectedPlan === 'yearly' && <View style={styles.glowEffect} />}
+              
+              {/* Most Popular Badge */}
+              <View style={styles.popularBadge}>
+                <Text style={styles.popularBadgeText}>⭐ BEST VALUE</Text>
+              </View>
+              
+              {/* Save Badge */}
+              <View style={styles.saveBadge}>
+                <Text style={styles.saveBadgeText}>Save 44%</Text>
+              </View>
+              
+              <View style={styles.trialBadge}>
+                <Text style={styles.trialBadgeText}>7 days free</Text>
+              </View>
+              
+              <View style={styles.radioOuter}>
+                {selectedPlan === 'yearly' && <View style={styles.radioInner} />}
+              </View>
+              
+              <View style={styles.planInfo}>
+                <Text style={styles.planPrice}>$59.99 / year</Text>
+                <Text style={styles.planSavings}>Just $4.99/month</Text>
+                <Text style={styles.planBilled}>
+                  Billed annually after trial
+                </Text>
+              </View>
+            </Pressable>
+
             {/* Monthly Plan */}
             <Pressable
               style={[styles.planCard, selectedPlan === 'monthly' && styles.planCardSelected]}
               onPress={() => setSelectedPlan('monthly')}
             >
               {selectedPlan === 'monthly' && <View style={styles.glowEffect} />}
+              
               <View style={styles.trialBadge}>
-                <Text style={styles.trialBadgeText}>1 week free</Text>
+                <Text style={styles.trialBadgeText}>7 days free</Text>
               </View>
+              
               <View style={styles.radioOuter}>
                 {selectedPlan === 'monthly' && <View style={styles.radioInner} />}
               </View>
+              
               <View style={styles.planInfo}>
                 <Text style={styles.planPrice}>$8.99 / month</Text>
                 <Text style={styles.planBilled}>
-                  Then $8.99/month after free trial
-                </Text>
-              </View>
-            </Pressable>
-
-            {/* Yearly Plan */}
-            <Pressable
-              style={[styles.planCard, selectedPlan === 'yearly' && styles.planCardSelected]}
-              onPress={() => setSelectedPlan('yearly')}
-            >
-              {selectedPlan === 'yearly' && <View style={styles.glowEffect} />}
-              <View style={styles.trialBadge}>
-                <Text style={styles.trialBadgeText}>1 week free</Text>
-              </View>
-              <View style={styles.radioOuter}>
-                {selectedPlan === 'yearly' && <View style={styles.radioInner} />}
-              </View>
-              <View style={styles.planInfo}>
-                <Text style={styles.planPrice}>$59.99 / year</Text>
-                <Text style={styles.planBilled}>
-                  $4.99/month, then $59.99/year after free trial
+                  Billed monthly after trial
                 </Text>
               </View>
             </Pressable>
@@ -157,8 +224,36 @@ const styles = StyleSheet.create({
     fontSize: 40,
     fontWeight: 'bold',
     color: '#FFFFFF',
-    marginBottom: 24,
+    marginBottom: 12,
     lineHeight: 48,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#888',
+    marginBottom: 4,
+  },
+  planToggle: {
+    flexDirection: 'row',
+    backgroundColor: '#1A1A1A',
+    borderRadius: 16,
+    padding: 4,
+  },
+  toggleButton: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderRadius: 12,
+  },
+  toggleButtonActive: {
+    backgroundColor: '#D4AF37',
+  },
+  toggleText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#888',
+  },
+  toggleTextActive: {
+    color: '#000000',
   },
   features: {
     marginBottom: 24,
@@ -232,6 +327,36 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#000000',
   },
+  popularBadge: {
+    position: 'absolute',
+    top: -10,
+    left: 16,
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    zIndex: 1,
+  },
+  popularBadgeText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  saveBadge: {
+    position: 'absolute',
+    top: -10,
+    right: 100,
+    backgroundColor: '#FF5722',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    zIndex: 1,
+  },
+  saveBadgeText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
   radioOuter: {
     width: 24,
     height: 24,
@@ -256,6 +381,12 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFFFFF',
     marginBottom: 4,
+  },
+  planSavings: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#4CAF50',
+    marginBottom: 2,
   },
   planBilled: {
     fontSize: 12,

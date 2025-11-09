@@ -1,10 +1,10 @@
 # In‑App Purchases: Realistic testing without spending money
 
-This app uses `react-native-iap` for subscriptions (weekly and yearly). You can test end‑to‑end, on real devices, with no charges by using the platforms’ sandbox/testing flows.
+This app uses `react-native-iap` for subscriptions (monthly and yearly). You can test end‑to‑end, on real devices, with no charges by using the platforms' sandbox/testing flows.
 
 Products used by the app:
-- Weekly: `pro_weekly` (override via `EXPO_PUBLIC_IAP_WEEKLY_ID`)
-- Yearly: `pro_yearly` (override via `EXPO_PUBLIC_IAP_YEARLY_ID`)
+- Monthly: `com.asif.screenshotanalyzer.promonthly` (override via `EXPO_PUBLIC_IAP_MONTHLY_ID`)
+- Yearly: `com.asif.screenshotanalyzer.proyearly` (override via `EXPO_PUBLIC_IAP_YEARLY_ID`)
 
 The UI also falls back to a local 3‑day trial when IAP isn’t available (e.g., running in Expo Go).
 
@@ -15,8 +15,8 @@ You’ll need a build that includes the IAP native code (Expo Go does not). Use 
 1) Configure products in App Store Connect
 - In‑App Purchases → Auto‑renewable subscriptions
 - Create two products with IDs. Example IDs:
-  - `com.yourcompany.analyzer.pro_weekly`
-  - `com.yourcompany.analyzer.pro_yearly`
+  - `com.asif.screenshotanalyzer.promonthly`
+  - `com.asif.screenshotanalyzer.proyearly`
   Use any IDs you like, but they must match what the app requests.
 - Add them to a Subscription Group and submit for review (you can still test sandbox before review completes)
 
@@ -26,8 +26,7 @@ You’ll need a build that includes the IAP native code (Expo Go does not). Use 
 
 3) Make sure bundle identifiers are stable
 - In `app.json`, set:
-  - `ios.bundleIdentifier` (e.g., `com.yourcompany.analyzer`)
-  - `android.package` (e.g., `com.yourcompany.analyzer`)
+  - `ios.bundleIdentifier` (e.g., `com.asif.screenshotanalyzer`)
   Product IDs in the stores are tied to these identifiers.
 
 4) Build an app that contains IAP
@@ -54,29 +53,6 @@ You’ll need a build that includes the IAP native code (Expo Go does not). Use 
 Optional: StoreKit Testing in Xcode
 - You can also use a StoreKit Configuration file in Xcode to simulate purchases in the Simulator—no Apple ID required.
 
-## Android (Google Play test cards)
-
-Android also requires an installed build with billing capabilities.
-
-1) Create products in Google Play Console
-- Monetize → Products → Subscriptions
-- Create two SKUs matching your choice (e.g., `com.yourcompany.analyzer.pro_weekly`, `com.yourcompany.analyzer.pro_yearly`)
-
-2) Add license testers
-- Play Console → Settings → Developer Account → License testing
-- Add Gmail accounts you will test with
-
-3) Upload an internal testing build
-- Build an Android APK/AAB and upload to an internal testing track (or use Internal App Sharing)
-- Opt‑in your tester account to the track and install the app from Play
-
-4) Test a purchase
-- On the test device, sign into Play with a tester account
-- In‑app purchase will show a test card (e.g., "Test card, always approves"); no charges occur
-
-5) Restore purchases
-- In the app Settings → "Restore Purchases"
-
 ## Dev/Expo Go fallback
 
 If you run in Expo Go or a simulator without IAP, the paywall will start a local 3‑day trial instead of a real purchase. This is for quick UI/testing only; build a Dev Client/TestFlight for real IAP flows.
@@ -95,8 +71,8 @@ When you’re ready to test real IAP, unset the variable and run a Dev Client/Te
 Instead of editing code, set environment variables before starting your build/bundle:
 
 ```bash
-export EXPO_PUBLIC_IAP_WEEKLY_ID="com.yourcompany.analyzer.pro_weekly"
-export EXPO_PUBLIC_IAP_YEARLY_ID="com.yourcompany.analyzer.pro_yearly"
+export EXPO_PUBLIC_IAP_MONTHLY_ID="com.asif.screenshotanalyzer.promonthly"
+export EXPO_PUBLIC_IAP_YEARLY_ID="com.asif.screenshotanalyzer.proyearly"
 npx expo start --ios
 ```
 
@@ -106,6 +82,5 @@ For EAS builds, add these to your project’s EAS environment secrets/variables.
 
 For production, add backend receipt validation to prevent fraud:
 - iOS: Validate the App Store JWS/receipt with Apple
-- Android: Validate purchase tokens via Google Play Developer API
 
 For sandbox testing, local validation is sufficient and no money is charged.
