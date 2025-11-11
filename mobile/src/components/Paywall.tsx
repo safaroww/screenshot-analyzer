@@ -1,5 +1,5 @@
 ﻿import React, { useEffect, useState } from 'react';
-import { Modal, View, Text, StyleSheet, Pressable, Platform, ScrollView } from 'react-native';
+import { Modal, View, Text, StyleSheet, Pressable, Platform, ScrollView, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 type Props = {
@@ -105,7 +105,13 @@ export default function Paywall({ visible, onClose, onSubscribeMonthly, onSubscr
           {/* Terms below button */}
           <Text style={styles.terms}>
             Renews automatically after trial. Cancel anytime.{"\n"}
-            <Text style={styles.termsLink}>Need help or already purchased?</Text>
+            <Text style={styles.termsLink} onPress={() => Linking.openURL('https://safaroww.github.io/screenshot-analyzer/terms-of-use.html')}>
+              Terms of Use
+            </Text>
+            {" • "}
+            <Text style={styles.termsLink} onPress={() => Linking.openURL('https://safaroww.github.io/screenshot-analyzer/privacy-policy.html')}>
+              Privacy Policy
+            </Text>
           </Text>
 
           {/* Close button overlay - does not affect layout; enabled after 5s */}
