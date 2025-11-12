@@ -5,6 +5,7 @@ This `server/` folder is a standalone Vercel project using Serverless Functions 
 Endpoints:
 - `GET /api/health` → `{ ok: true }`
 - `POST /api/analyze` → multipart form data with field `image` (file) and optional `prompt` (text)
+- `POST /api/validate-receipt` → JSON `{ receiptData: string(base64) }` → validates Apple receipts with prod→sandbox fallback
 
 ## 1) Create the Vercel project
 
@@ -26,6 +27,7 @@ In Vercel Dashboard → Your Project → Settings → Environment Variables:
 - Optional:
   - `OPENAI_MODEL` = gpt-4o-mini (default)
   - `OMDB_API_KEY` (not required for minimal analyze)
+ - `APPLE_SHARED_SECRET` = Your App Store Connect subscriptions shared secret (Required for `/api/validate-receipt`)
 
 Re-deploy after adding env variables.
 
@@ -51,8 +53,10 @@ export EXPO_PUBLIC_API_BASE_URL=https://<your-app>.vercel.app
 Rebuild the iOS app (Clean Build Folder → Run). The app will call:
 - `GET https://<your-app>.vercel.app/health` (rewritten to `/api/health` by vercel.json)
 - `POST https://<your-app>.vercel.app/analyze` (rewritten to `/api/analyze` by vercel.json)
+ - `POST https://<your-app>.vercel.app/validate-receipt` (rewritten to `/api/validate-receipt`)
 
 ## Notes
 - CORS is enabled with `Access-Control-Allow-Origin: *` in the functions.
 - The serverless function uses `formidable` and `sharp` to handle image uploads and conversion.
 - For larger images, keep uploads < 5–10MB to avoid timeouts/limits on free tiers.
+ - Apple receipt validation uses the production endpoint first and falls back to sandbox when status `21007` is returned.

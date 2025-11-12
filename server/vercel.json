@@ -2,6 +2,7 @@
   "version": 2,
   "rewrites": [
     { "source": "/api/health", "destination": "/api/health.js" },
-    { "source": "/api/analyze", "destination": "/api/analyze.js" }
+    { "source": "/api/analyze", "destination": "/api/analyze.js" },
+    { "source": "/api/validate-receipt", "destination": "/api/validate-receipt.js" }
   ]
 }

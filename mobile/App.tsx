@@ -140,19 +140,25 @@ export default function App() {
           'Missing product ID',
           `The ${plan} product ID is empty in this build. Double-check your .env and EAS/Expo config before rebuilding.`
         );
-        return false;
+        return { allow: false, force: false } as const;
       }
       if (!availableSkus.includes(sku)) {
-        Alert.alert(
-          'Purchases not ready',
-          'The App Store has not returned this subscription yet. Reinstall from TestFlight and ensure the subscription is attached to the current version in App Store Connect.'
-        );
-        return false;
+        // Provide a detailed, copyable message and allow the user to try anyway
+        return await new Promise<{ allow: boolean; force: boolean }>((resolve) => {
+          Alert.alert(
+            'Purchases not ready',
+            `The App Store did not return this subscription for this build.\n\nPlan: ${plan}\nSKU: ${sku}\nReturned (${availableSkus.length}): ${availableSkus.join(', ') || '(none)'}\nInitialized: ${snapshot.initialized ? 'yes' : 'no'}\nPlatform: ${Platform.OS}`,
+            [
+              { text: 'Cancel', style: 'cancel', onPress: () => resolve({ allow: false, force: false }) },
+              { text: 'Try anyway', onPress: () => resolve({ allow: true, force: true }) },
+            ]
+          );
+        });
       }
-      return true;
+      return { allow: true, force: false } as const;
     } catch (err: any) {
       Alert.alert('Purchase Error', err?.message || 'Unable to verify in-app purchase configuration.');
-      return false;
+      return { allow: false, force: false } as const;
     }
   }, []);
 
@@ -435,9 +441,9 @@ export default function App() {
         }}
         onSubscribeMonthly={async () => {
           try {
-            const ready = await ensureProductAvailable('monthly');
-            if (!ready) return;
-            const ok = await requestPlan('monthly');
+            const check = await ensureProductAvailable('monthly');
+            if (!check.allow) return;
+            const ok = await requestPlan('monthly', { force: check.force });
             if (ok) {
               const s = await getSubscriptionState();
               setIsSubscribed(!!s.isSubscribed);
@@ -460,9 +466,9 @@ export default function App() {
         }}
         onSubscribeYearly={async () => {
           try {
-            const ready = await ensureProductAvailable('yearly');
-            if (!ready) return;
-            const ok = await requestPlan('yearly');
+            const check = await ensureProductAvailable('yearly');
+            if (!check.allow) return;
+            const ok = await requestPlan('yearly', { force: check.force });
             if (ok) {
               const s = await getSubscriptionState();
               setIsSubscribed(!!s.isSubscribed);
@@ -724,6 +730,18 @@ export default function App() {
                     </View>
                   ))
                 )}
+                {Array.isArray(iapDebugInfo?.rawProducts) && iapDebugInfo!.rawProducts!.length > 0 ? (
+                  <>
+                    <Text style={[styles.infoParagraph, { marginTop: 12 }]}>Raw products (sample):</Text>
+                    {(iapDebugInfo!.rawProducts || []).slice(0, 3).map((obj, i) => (
+                      <Text key={`raw-${i}`} style={styles.infoSmall}>
+                        {(() => {
+                          try { return JSON.stringify(obj, null, 2); } catch { return String(obj); }
+                        })()}
+                      </Text>
+                    ))}
+                  </>
+                ) : null}
                 {(iapDebugInfo?.hints ?? []).map((hint, idx) => (
                   <Text key={idx} style={[styles.infoParagraph, { color: '#F5A623' }]}>
                     Hint {idx + 1}: {hint}

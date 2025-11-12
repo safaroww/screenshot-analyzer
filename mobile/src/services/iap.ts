@@ -81,7 +81,12 @@ export async function initIAP() {
 				console.log('[IAP] Using getSubscriptions API');
 				const res = await RNIap.getSubscriptions(Object.values(SUBS_IDS));
 				cachedSubs = Array.isArray(res) ? res : [];
-				console.log('[IAP] ✅ Loaded', cachedSubs.length, 'products:', cachedSubs.map((p: any) => p.productId));
+				console.log(
+					'[IAP] ✅ Loaded',
+					cachedSubs.length,
+					'products:',
+					cachedSubs.map((p: any) => p?.productId || p?.productIdentifier || p?.id)
+				);
 			} else if (typeof RNIap.getProducts === 'function') {
 				console.log('[IAP] Using getProducts API');
 				// Fallback: getProducts (older variants)
@@ -175,6 +180,7 @@ export type IapDebugInfo = {
 	subscriptionCount: number;
 	hints: string[];
 	timestamp: string;
+	rawProducts?: any[];
 };
 
 export async function collectIapDebugInfo(): Promise<IapDebugInfo> {
@@ -220,12 +226,23 @@ export async function collectIapDebugInfo(): Promise<IapDebugInfo> {
 	}
 
 	info.initialized = initialized;
-	info.cachedProducts = (cachedSubs || []).map((p: any) => ({
-		productId: p?.productId || p?.productIdentifier || 'unknown',
-		title: p?.title,
-		price: p?.localizedPrice,
-	}));
-	info.subscriptionCount = info.cachedProducts.length;
+	info.cachedProducts = (cachedSubs || []).map((p: any) => {
+		const pid = p?.productId || p?.productIdentifier || p?.id || 'unknown';
+		// Try common price fields across RN-IAP/iOS variants
+		const price =
+			p?.localizedPrice ||
+			p?.priceString ||
+			p?.displayPrice ||
+			(p?.price && (p?.currency ? `${p.price} ${p.currency}` : String(p.price))) ||
+			undefined;
+		const title = p?.title || p?.displayName || p?.displayNameIOS || undefined;
+		return { productId: pid, title, price };
+	});
+	info.subscriptionCount = (cachedSubs || []).length;
+	// include a small raw sample for debugging (no secrets)
+	try {
+		info.rawProducts = (cachedSubs || []).slice(0, 3);
+	} catch {}
 
 	if (!info.cachedProducts.length) {
 		hints.push(
@@ -236,7 +253,7 @@ export async function collectIapDebugInfo(): Promise<IapDebugInfo> {
 	return info;
 }
 
-export async function requestPlan(plan: Plan): Promise<boolean> {
+export async function requestPlan(plan: Plan, opts?: { force?: boolean }): Promise<boolean> {
 	const sku = SUBS_IDS[plan];
 	console.log('[IAP] 🛒 Requesting purchase for plan:', plan, 'SKU:', sku);
 	
@@ -255,7 +272,8 @@ export async function requestPlan(plan: Plan): Promise<boolean> {
 	console.log('[IAP] Cached products:', cachedSubs.length, cachedSubs.map((p: any) => p.productId));
 
 	// Refresh if the requested SKU has not been seen yet
-	if (!(cachedSubs || []).some((p: any) => (p?.productId || p?.productIdentifier) === sku)) {
+	const seen = (cachedSubs || []).some((p: any) => (p?.productId || p?.productIdentifier || p?.id) === sku);
+	if (!seen) {
 		try {
 			if (typeof RNIap?.getSubscriptions === 'function') {
 				const refreshed = await RNIap.getSubscriptions(Object.values(SUBS_IDS));
@@ -267,9 +285,9 @@ export async function requestPlan(plan: Plan): Promise<boolean> {
 		} catch (err: any) {
 			console.warn('[IAP] Unable to refresh products for purchase:', err?.message || err);
 		}
-		const newList: string[] = (cachedSubs || []).map((p: any) => p.productId || p.productIdentifier).filter(Boolean);
+	const newList: string[] = (cachedSubs || []).map((p: any) => p.productId || p.productIdentifier || p.id).filter(Boolean);
 		console.log('[IAP] Products after refresh attempt:', newList);
-		if (!newList.includes(sku)) {
+		if (!newList.includes(sku) && !opts?.force) {
 			throw new Error(
 				'Product not found on App Store. Confirm the subscriptions are attached to this app version in App Store Connect, their status is Ready to Submit+, and agreements/tax/banking are active.'
 			);
