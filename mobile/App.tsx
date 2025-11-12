@@ -449,9 +449,10 @@ export default function App() {
           } catch (e: any) {
             // Show actual error for debugging
             console.error('Monthly IAP Error:', e);
+            const code = e?.code ? ` (code: ${e.code})` : '';
             Alert.alert(
               'Purchase Error',
-              e?.message || 'Unable to process purchase. Please try again.',
+              (e?.message || 'Unable to process purchase. Please try again.') + code,
               [{ text: 'OK' }]
             );
             setPaywallVisible(false);
@@ -473,9 +474,10 @@ export default function App() {
           } catch (e: any) {
             // Show actual error for debugging
             console.error('Yearly IAP Error:', e);
+            const code = e?.code ? ` (code: ${e.code})` : '';
             Alert.alert(
               'Purchase Error',
-              e?.message || 'Unable to process purchase. Please try again.',
+              (e?.message || 'Unable to process purchase. Please try again.') + code,
               [{ text: 'OK' }]
             );
             setPaywallVisible(false);

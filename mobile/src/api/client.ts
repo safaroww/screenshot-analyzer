@@ -84,3 +84,31 @@ export async function uploadImage(formData: FormData) {
     throw new Error(`Could not reach server at ${base}: ${reason}. If this is a physical device or tunnel, set EXPO_PUBLIC_API_BASE_URL to your PC LAN IP (e.g. http://192.168.x.x:4000).`);
   }
 }
+
+export type AppleReceiptValidation = {
+  ok: boolean;
+  appleStatus: number;
+  environment: string;
+  isActive: boolean;
+  status: 'active' | 'expired' | 'cancelled' | 'inactive';
+  isTrial?: boolean;
+  isInIntro?: boolean;
+  expiresAt?: string | null;
+  productId?: string | null;
+  originalTransactionId?: string | null;
+};
+
+export async function validateAppleReceipt(receiptDataBase64: string): Promise<AppleReceiptValidation> {
+  const base = await resolveBaseUrl();
+  const res = await fetch(`${base}/validate-receipt`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ receiptData: receiptDataBase64, excludeOldTransactions: true }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Receipt validation server error ${res.status}: ${text}`);
+  }
+  const json = await res.json();
+  return json as AppleReceiptValidation;
+}
