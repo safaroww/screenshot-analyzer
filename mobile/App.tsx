@@ -7,6 +7,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { StatusBar } from 'expo-status-bar';
 import ResultView from './src/components/ResultView';
 import Paywall from './src/components/Paywall';
+import ProOnboarding from './src/components/ProOnboarding';
 import { getSubscriptionState, incrementFreeCount, setSubscribed, setTrialIfFirstOpen, startLocalTrial, clearAllData } from './src/store/subscription';
 import { initIAP, requestPlan, restorePurchases, collectIapDebugInfo } from './src/services/iap';
 import type { IapDebugInfo } from './src/services/iap';
@@ -30,11 +31,15 @@ export default function App() {
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [manageSubVisible, setManageSubVisible] = useState(false);
   const [privacyVisible, setPrivacyVisible] = useState(false);
+  const [proOnboardingVisible, setProOnboardingVisible] = useState(false);
+  const [purchaseProcessingVisible, setPurchaseProcessingVisible] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [freeUsesLeft, setFreeUsesLeft] = useState(1);
   const [iapDebugVisible, setIapDebugVisible] = useState(false);
   const [iapDebugLoading, setIapDebugLoading] = useState(false);
   const [iapDebugInfo, setIapDebugInfo] = useState<IapDebugInfo | null>(null);
+  const [toastText, setToastText] = useState<string | null>(null);
+  const toastOpacity = React.useRef(new Animated.Value(0)).current;
   
   // Premium animations
   const glowAnim = React.useRef(new Animated.Value(0)).current;
@@ -47,7 +52,7 @@ export default function App() {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
   React.useEffect(() => {
-    // First open: init counters but DON'T show paywall
+    // First open: init counters and immediately show paywall if not subscribed
     (async () => {
       // TEMPORARY: Clear any old trial data from previous builds
       // Remove this after users update once
@@ -56,11 +61,9 @@ export default function App() {
         await clearAllData();
         await AsyncStorage.setItem('app.version.cleared', '1');
       }
-      
+
       await setTrialIfFirstOpen();
-      const s = await getSubscriptionState();
-      setIsSubscribed(!!s.isSubscribed);
-      setFreeUsesLeft(Math.max(0, 1 - s.freeAnalysesUsed));
+
       // Initialize IAP connection unless explicitly disabled via env
       try {
         const disabled = String((process as any)?.env?.EXPO_PUBLIC_IAP_DISABLED || '').toLowerCase();
@@ -68,7 +71,19 @@ export default function App() {
           await initIAP();
         }
       } catch {}
-      // Don't show paywall on app open - let user explore first
+
+      // Try a silent restore so existing subscribers aren't prompted
+      try {
+        await restorePurchases();
+      } catch {}
+
+      // Read latest state and decide whether to show paywall
+      const s = await getSubscriptionState();
+      setIsSubscribed(!!s.isSubscribed);
+      setFreeUsesLeft(Math.max(0, 1 - s.freeAnalysesUsed));
+      if (!s.isSubscribed) {
+        setPaywallVisible(true);
+      }
     })();
   }, []);
 
@@ -130,6 +145,10 @@ export default function App() {
   }, [loading]);
 
   const ensureProductAvailable = useCallback(async (plan: 'monthly' | 'yearly') => {
+    // Fast path for dev builds: skip preflight store fetch
+    if (__DEV__) {
+      return { allow: true, force: true } as const;
+    }
     try {
       const snapshot = await collectIapDebugInfo();
       setIapDebugInfo(snapshot);
@@ -161,6 +180,18 @@ export default function App() {
       return { allow: false, force: false } as const;
     }
   }, []);
+
+  const showToast = useCallback((text: string) => {
+    setToastText(text);
+    toastOpacity.setValue(0);
+    Animated.timing(toastOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start(() => {
+      setTimeout(() => {
+        Animated.timing(toastOpacity, { toValue: 0, duration: 250, useNativeDriver: true }).start(() => {
+          setToastText(null);
+        });
+      }, 2200);
+    });
+  }, [toastOpacity]);
 
   const openSourceChooser = () => {
     setSourceSheetOpen(true);
@@ -443,12 +474,19 @@ export default function App() {
           try {
             const check = await ensureProductAvailable('monthly');
             if (!check.allow) return;
+            setPurchaseProcessingVisible(true);
             const ok = await requestPlan('monthly', { force: check.force });
             if (ok) {
               const s = await getSubscriptionState();
               setIsSubscribed(!!s.isSubscribed);
               setPaywallVisible(false);
-              Alert.alert('Success!', 'You now have unlimited access to all features.');
+              // Show onboarding once after successful subscription
+              try {
+                const shown = await AsyncStorage.getItem('pro.onboarded');
+                if (shown !== '1') {
+                  setProOnboardingVisible(true);
+                }
+              } catch {}
               return;
             }
             throw new Error('Purchase did not complete');
@@ -462,18 +500,27 @@ export default function App() {
               [{ text: 'OK' }]
             );
             setPaywallVisible(false);
+          } finally {
+            setPurchaseProcessingVisible(false);
           }
         }}
         onSubscribeYearly={async () => {
           try {
             const check = await ensureProductAvailable('yearly');
             if (!check.allow) return;
+            setPurchaseProcessingVisible(true);
             const ok = await requestPlan('yearly', { force: check.force });
             if (ok) {
               const s = await getSubscriptionState();
               setIsSubscribed(!!s.isSubscribed);
               setPaywallVisible(false);
-              Alert.alert('Success!', 'You now have unlimited access to all features.');
+              // Show onboarding once after successful subscription
+              try {
+                const shown = await AsyncStorage.getItem('pro.onboarded');
+                if (shown !== '1') {
+                  setProOnboardingVisible(true);
+                }
+              } catch {}
               return;
             }
             throw new Error('Purchase did not complete');
@@ -487,9 +534,60 @@ export default function App() {
               [{ text: 'OK' }]
             );
             setPaywallVisible(false);
+          } finally {
+            setPurchaseProcessingVisible(false);
           }
         }}
       />
+
+      {/* Pro onboarding - show once after successful subscription */}
+      <ProOnboarding
+        visible={proOnboardingVisible}
+        onClose={async () => {
+          try { await AsyncStorage.setItem('pro.onboarded', '1'); } catch {}
+          setProOnboardingVisible(false);
+          // Subtle confirmation without blocking
+          showToast("You're all set!");
+        }}
+      />
+
+      {/* Purchase processing overlay */}
+      <Modal visible={purchaseProcessingVisible} transparent animationType="fade">
+        <View style={styles.loadingBackdrop}>
+          <View style={styles.loadingCard}>
+            <ActivityIndicator color="#D4AF37" size="large" />
+            <Text style={styles.loadingTitle}>Processing your purchase…</Text>
+            <Text style={styles.loadingSubtitle}>Finalizing with the App Store</Text>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Toast */}
+      {toastText ? (
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: Platform.OS === 'ios' ? 50 : 30,
+            alignItems: 'center',
+            opacity: toastOpacity,
+            transform: [{ translateY: toastOpacity.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+          }}
+        >
+          <View style={{
+            backgroundColor: 'rgba(0,0,0,0.85)',
+            paddingHorizontal: 16,
+            paddingVertical: 10,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: '#1F1F1F',
+          }}>
+            <Text style={{ color: '#fff', fontWeight: '700' }}>{toastText}</Text>
+          </View>
+        </Animated.View>
+      ) : null}
 
       {/* Fullscreen image preview */}
       <Modal
@@ -806,6 +904,10 @@ export default function App() {
 
             <Text style={styles.infoParagraph}>
               8) Purchases & refunds: Purchases are processed by Apple. Refunds are handled by Apple at reportaproblem.apple.com.
+            </Text>
+
+            <Text style={styles.infoParagraph}>
+              Terms of Use: <Text style={{color: '#D4AF37'}} onPress={() => Linking.openURL('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')}>Apple Standard EULA</Text>. This app uses Apple’s standard EULA for subscription terms and we include the same link in the App Store description: "Terms of Use: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" so reviewers and users can view it directly from the store listing.
             </Text>
 
             <Text style={styles.infoSmall}>Contact: support@example.com</Text>
