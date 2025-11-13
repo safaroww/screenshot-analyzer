@@ -7,7 +7,6 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { StatusBar } from 'expo-status-bar';
 import ResultView from './src/components/ResultView';
 import Paywall from './src/components/Paywall';
-import ProOnboarding from './src/components/ProOnboarding';
 import { getSubscriptionState, incrementFreeCount, setSubscribed, setTrialIfFirstOpen, startLocalTrial, clearAllData } from './src/store/subscription';
 import { initIAP, requestPlan, restorePurchases, collectIapDebugInfo } from './src/services/iap';
 import type { IapDebugInfo } from './src/services/iap';
@@ -31,14 +30,12 @@ export default function App() {
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [manageSubVisible, setManageSubVisible] = useState(false);
   const [privacyVisible, setPrivacyVisible] = useState(false);
-  const [proOnboardingVisible, setProOnboardingVisible] = useState(false);
-  const [purchaseProcessingVisible, setPurchaseProcessingVisible] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [freeUsesLeft, setFreeUsesLeft] = useState(1);
   const [iapDebugVisible, setIapDebugVisible] = useState(false);
   const [iapDebugLoading, setIapDebugLoading] = useState(false);
   const [iapDebugInfo, setIapDebugInfo] = useState<IapDebugInfo | null>(null);
-  
+  const [purchaseLoading, setPurchaseLoading] = useState(false);
   
   // Premium animations
   const glowAnim = React.useRef(new Animated.Value(0)).current;
@@ -175,8 +172,6 @@ export default function App() {
       return { allow: false, force: false } as const;
     }
   }, []);
-
-  
 
   const openSourceChooser = () => {
     setSourceSheetOpen(true);
@@ -457,21 +452,15 @@ export default function App() {
         }}
         onSubscribeMonthly={async () => {
           try {
+            setPurchaseLoading(true);
             const check = await ensureProductAvailable('monthly');
             if (!check.allow) return;
-            setPurchaseProcessingVisible(true);
             const ok = await requestPlan('monthly', { force: check.force });
             if (ok) {
               const s = await getSubscriptionState();
               setIsSubscribed(!!s.isSubscribed);
               setPaywallVisible(false);
-              // Show onboarding once after successful subscription
-              try {
-                const shown = await AsyncStorage.getItem('pro.onboarded');
-                if (shown !== '1') {
-                  setProOnboardingVisible(true);
-                }
-              } catch {}
+              Alert.alert('Success!', 'You now have unlimited access to all features.');
               return;
             }
             throw new Error('Purchase did not complete');
@@ -486,26 +475,20 @@ export default function App() {
             );
             setPaywallVisible(false);
           } finally {
-            setPurchaseProcessingVisible(false);
+            setPurchaseLoading(false);
           }
         }}
         onSubscribeYearly={async () => {
           try {
+            setPurchaseLoading(true);
             const check = await ensureProductAvailable('yearly');
             if (!check.allow) return;
-            setPurchaseProcessingVisible(true);
             const ok = await requestPlan('yearly', { force: check.force });
             if (ok) {
               const s = await getSubscriptionState();
               setIsSubscribed(!!s.isSubscribed);
               setPaywallVisible(false);
-              // Show onboarding once after successful subscription
-              try {
-                const shown = await AsyncStorage.getItem('pro.onboarded');
-                if (shown !== '1') {
-                  setProOnboardingVisible(true);
-                }
-              } catch {}
+              Alert.alert('Success!', 'You now have unlimited access to all features.');
               return;
             }
             throw new Error('Purchase did not complete');
@@ -520,32 +503,10 @@ export default function App() {
             );
             setPaywallVisible(false);
           } finally {
-            setPurchaseProcessingVisible(false);
+            setPurchaseLoading(false);
           }
         }}
       />
-
-      {/* Pro onboarding - show once after successful subscription */}
-      <ProOnboarding
-        visible={proOnboardingVisible}
-        onClose={async () => {
-          try { await AsyncStorage.setItem('pro.onboarded', '1'); } catch {}
-          setProOnboardingVisible(false);
-        }}
-      />
-
-      {/* Purchase processing overlay */}
-      <Modal visible={purchaseProcessingVisible} transparent animationType="fade">
-        <View style={styles.loadingBackdrop}>
-          <View style={styles.loadingCard}>
-            <ActivityIndicator color="#D4AF37" size="large" />
-            <Text style={styles.loadingTitle}>Processing your purchase…</Text>
-            <Text style={styles.loadingSubtitle}>Finalizing with the App Store</Text>
-          </View>
-        </View>
-      </Modal>
-
-      
 
       {/* Fullscreen image preview */}
       <Modal
@@ -636,6 +597,17 @@ export default function App() {
             <ActivityIndicator color="#D4AF37" size="large" />
             <Text style={styles.loadingTitle}>Analyzing screenshot…</Text>
             <Text style={styles.loadingSubtitle}>{PROGRESS_MESSAGES[progressIndex]}</Text>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Purchase processing overlay */}
+      <Modal visible={purchaseLoading} transparent animationType="fade">
+        <View style={styles.loadingBackdrop}>
+          <View style={styles.loadingCard}>
+            <ActivityIndicator color="#D4AF37" size="large" />
+            <Text style={styles.loadingTitle}>Processing purchase…</Text>
+            <Text style={styles.loadingSubtitle}>Confirm with the App Store if prompted</Text>
           </View>
         </View>
       </Modal>
@@ -865,7 +837,17 @@ export default function App() {
             </Text>
 
             <Text style={styles.infoParagraph}>
-              Terms of Use: <Text style={{color: '#D4AF37'}} onPress={() => Linking.openURL('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')}>Apple Standard EULA</Text>. This app uses Apple’s standard EULA for subscription terms and we include the same link in the App Store description: "Terms of Use: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" so reviewers and users can view it directly from the store listing.
+              Terms of Use: 
+              <Text style={{ color: '#D4AF37' }} onPress={() => Linking.openURL('https://safaroww.github.io/screenshot-analyzer/terms-of-use.html')}>
+                https://safaroww.github.io/screenshot-analyzer/terms-of-use.html
+              </Text>
+            </Text>
+
+            <Text style={styles.infoParagraph}>
+              Apple Standard EULA: 
+              <Text style={{ color: '#D4AF37' }} onPress={() => Linking.openURL('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')}>
+                https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
+              </Text>
             </Text>
 
             <Text style={styles.infoSmall}>Contact: support@example.com</Text>

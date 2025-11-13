@@ -111,33 +111,6 @@ https://safaroww.github.io/screenshot-analyzer/support.html
 ---
 
 ## 🌐 Marketing URL (Optional)
-## 📄 Terms of Use (EULA) — Required for Subscriptions
-
-Apple requires a Terms of Use (EULA) link for apps offering auto-renewable subscriptions.
-
-Recommended (Apple’s Standard EULA):
-```
-https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
-```
-
-Include the link in the App Description so it’s visible to users during review and on the store page.
-
-Where to put it in App Store Connect:
-- Go to your app → App Information → Description → Add the Terms of Use link text at the end.
-
-Copy-paste this exact line into your App Description (recommended):
-
-```
-Terms of Use: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
-```
-
-- Or set a Custom EULA in App Information → License Agreement (paste your EULA content for territories). If you choose this route, still include a link in the Description to speed review.
-
-Also ensure your Privacy Policy URL is set to:
-```
-https://safaroww.github.io/screenshot-analyzer/privacy-policy.html
-```
-
 **Leave this BLANK** unless you have a marketing website.
 
 If you want one, you can use:
@@ -186,6 +159,16 @@ screenshot,analyze,OCR,text,extract,AI,photo,scan,document,image,reader,summary,
 **Support URL:**
 ```
 mailto:asifasafarov00@gmail.com
+```
+
+**Terms of Use (EULA):**
+```
+https://safaroww.github.io/screenshot-analyzer/terms-of-use.html
+```
+
+**Apple Standard EULA (reference):**
+```
+https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
 ```
 
 **Marketing URL:**

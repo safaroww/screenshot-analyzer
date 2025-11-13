@@ -1,42 +1,21 @@
-# App Store Description (final suggested) — includes Apple EULA link
+# App Store Description — Terms of Use (EULA) Section
 
-Transform your screenshots into instant, private insights with Screenshot Summarize — the fastest, most privacy-friendly way to extract text, links, and web context from any image.
+Apple requires that apps offering auto‑renewable subscriptions include clear Terms of Use. Add the following to the end of your App Store Description (both emoji and no‑emoji variants):
 
-KEY FEATURES
+---
 
-• Instant Analysis — Capture or select a screenshot and get a clear, organized summary in seconds.
-• OCR & Web Context — Extract text, detect links, and surface website previews and metadata so you know where a link goes before you tap.
-• Privacy-first Design — Images are processed securely and not stored long-term. We don’t sell or track your personal data.
-• Pro Features — Unlimited analyses, priority processing, web previews, and an ad-free experience.
+TERMS OF USE AND PRIVACY
 
-HOW IT WORKS
+• Terms of Use: https://safaroww.github.io/screenshot-analyzer/terms-of-use.html
+• Privacy Policy: https://safaroww.github.io/screenshot-analyzer/privacy-policy.html
+• Apple Standard EULA: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
 
-1. Take or choose a screenshot
-2. AI analyzes text and links instantly
-3. View a concise summary and web previews
-4. Save or share results with one tap
+Your subscription will automatically renew unless auto‑renew is turned off at least 24 hours before the end of the current period. You can manage or cancel your subscription in your Apple ID account settings after purchase. Any unused portion of a free trial period will be forfeited when you purchase a subscription.
 
-FREE TRIAL
+---
 
-Try Pro free for 7 days. Cancel anytime. Choose monthly or yearly plans.
+Copy the section above into App Store Connect → App Information → Description.
 
-WHO IS THIS FOR
-
-• Students capturing lecture slides
-• Professionals saving documents and notes
-• Shoppers collecting product links
-• Researchers and power users who take lots of screenshots
-
-PRIVACY & SECURITY
-
-Your privacy matters. Images are uploaded only for analysis, processed over encrypted HTTPS, and deleted after processing. We do not collect identifying personal data. Review our Privacy Policy: https://safaroww.github.io/screenshot-analyzer/privacy-policy.html
-
-SUPPORT
-
-Need help? Email: mailto:asifasafarov00@gmail.com
-
-TERMS OF USE (REQUIRED FOR SUBSCRIPTIONS)
-
-Terms of Use: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
-
-(Please include the exact line above in your App Store Description to surface Apple’s Standard EULA to reviewers and users.)
+Notes:
+- Also set “Privacy Policy URL” and (optionally) “Support URL” in App Store Connect to the same hosted pages.
+- Keep the links live and accessible (GitHub Pages hosting is fine).
