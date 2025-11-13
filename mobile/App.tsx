@@ -38,8 +38,7 @@ export default function App() {
   const [iapDebugVisible, setIapDebugVisible] = useState(false);
   const [iapDebugLoading, setIapDebugLoading] = useState(false);
   const [iapDebugInfo, setIapDebugInfo] = useState<IapDebugInfo | null>(null);
-  const [toastText, setToastText] = useState<string | null>(null);
-  const toastOpacity = React.useRef(new Animated.Value(0)).current;
+  
   
   // Premium animations
   const glowAnim = React.useRef(new Animated.Value(0)).current;
@@ -145,10 +144,6 @@ export default function App() {
   }, [loading]);
 
   const ensureProductAvailable = useCallback(async (plan: 'monthly' | 'yearly') => {
-    // Fast path for dev builds: skip preflight store fetch
-    if (__DEV__) {
-      return { allow: true, force: true } as const;
-    }
     try {
       const snapshot = await collectIapDebugInfo();
       setIapDebugInfo(snapshot);
@@ -181,17 +176,7 @@ export default function App() {
     }
   }, []);
 
-  const showToast = useCallback((text: string) => {
-    setToastText(text);
-    toastOpacity.setValue(0);
-    Animated.timing(toastOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start(() => {
-      setTimeout(() => {
-        Animated.timing(toastOpacity, { toValue: 0, duration: 250, useNativeDriver: true }).start(() => {
-          setToastText(null);
-        });
-      }, 2200);
-    });
-  }, [toastOpacity]);
+  
 
   const openSourceChooser = () => {
     setSourceSheetOpen(true);
@@ -546,8 +531,6 @@ export default function App() {
         onClose={async () => {
           try { await AsyncStorage.setItem('pro.onboarded', '1'); } catch {}
           setProOnboardingVisible(false);
-          // Subtle confirmation without blocking
-          showToast("You're all set!");
         }}
       />
 
@@ -562,32 +545,7 @@ export default function App() {
         </View>
       </Modal>
 
-      {/* Toast */}
-      {toastText ? (
-        <Animated.View
-          pointerEvents="none"
-          style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            bottom: Platform.OS === 'ios' ? 50 : 30,
-            alignItems: 'center',
-            opacity: toastOpacity,
-            transform: [{ translateY: toastOpacity.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
-          }}
-        >
-          <View style={{
-            backgroundColor: 'rgba(0,0,0,0.85)',
-            paddingHorizontal: 16,
-            paddingVertical: 10,
-            borderRadius: 12,
-            borderWidth: 1,
-            borderColor: '#1F1F1F',
-          }}>
-            <Text style={{ color: '#fff', fontWeight: '700' }}>{toastText}</Text>
-          </View>
-        </Animated.View>
-      ) : null}
+      
 
       {/* Fullscreen image preview */}
       <Modal
