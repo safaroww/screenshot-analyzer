@@ -105,8 +105,8 @@ export default function Paywall({ visible, onClose, onSubscribeMonthly, onSubscr
           {/* Terms below button */}
           <Text style={styles.terms}>
             Renews automatically after trial. Cancel anytime.{"\n"}
-            <Text style={styles.termsLink} onPress={() => Linking.openURL('https://safaroww.github.io/screenshot-analyzer/terms-of-use.html')}>
-              Terms of Use
+            <Text style={styles.termsLink} onPress={() => Linking.openURL('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')}>
+              Terms of Use (Apple EULA)
             </Text>
             {" • "}
             <Text style={styles.termsLink} onPress={() => Linking.openURL('https://safaroww.github.io/screenshot-analyzer/privacy-policy.html')}>

@@ -285,32 +285,61 @@ export async function requestPlan(plan: Plan, opts?: { force?: boolean }): Promi
 		} catch (err: any) {
 			console.warn('[IAP] Unable to refresh products for purchase:', err?.message || err);
 		}
-	const newList: string[] = (cachedSubs || []).map((p: any) => p.productId || p.productIdentifier || p.id).filter(Boolean);
+		const newList: string[] = (cachedSubs || []).map((p: any) => p.productId || p.productIdentifier || p.id).filter(Boolean);
 		console.log('[IAP] Products after refresh attempt:', newList);
-		if (!newList.includes(sku) && !opts?.force) {
-			throw new Error(
-				'Product not found on App Store. Confirm the subscriptions are attached to this app version in App Store Connect, their status is Ready to Submit+, and agreements/tax/banking are active.'
-			);
-		}
+		// Even if not listed, proceed with purchase request; Store can still handle it.
 	}
 
 	try {
-		// Subscriptions should use requestSubscription on iOS
+		// Subscriptions should use requestSubscription on iOS. RN-IAP v14 introduced a new config shape.
+		let called = false;
 		if (typeof RNIap.requestSubscription === 'function') {
-			console.log('[IAP] Using requestSubscription with SKU:', sku);
-			// iOS requires subscription requests with specific parameters
-			await RNIap.requestSubscription({
-				sku: sku,
-				...(Platform.OS === 'ios' && {
+			// Try the new v14+ shape first
+			try {
+				console.log('[IAP] Using requestSubscription (v14 shape) with SKU:', sku);
+				await RNIap.requestSubscription({
+					request: {
+						ios: {
+							sku,
+							// new param name in v14
+							andDangerouslyFinishTransactionAutomatically: false,
+						},
+					},
+					type: 'subs',
+				});
+				called = true;
+				console.log('[IAP] ✅ requestSubscription (v14) called successfully');
+			} catch (shapeErr: any) {
+				console.log('[IAP] requestSubscription (v14) failed, falling back to legacy:', shapeErr?.message || shapeErr);
+			}
+			if (!called) {
+				// Legacy shape used by older RN-IAP
+				await RNIap.requestSubscription({
+					sku,
 					andDangerouslyFinishTransactionAutomaticallyIOS: false,
-				}),
-			});
-			console.log('[IAP] ✅ requestSubscription called successfully');
+				});
+				called = true;
+				console.log('[IAP] ✅ requestSubscription (legacy) called successfully');
+			}
 		} else if (typeof RNIap.requestPurchase === 'function') {
 			console.log('[IAP] Using requestPurchase (fallback)');
-			// Fallback for older API shapes
-			await RNIap.requestPurchase({ sku, andDangerouslyFinishTransactionAutomaticallyIOS: false });
-			console.log('[IAP] ✅ requestPurchase called successfully');
+			// Try new v14 shape for requestPurchase
+			try {
+				await RNIap.requestPurchase({
+					request: {
+						ios: {
+							sku,
+							andDangerouslyFinishTransactionAutomatically: false,
+						},
+					},
+					type: 'subs',
+				});
+				console.log('[IAP] ✅ requestPurchase (v14) called successfully');
+			} catch (shapeErr: any) {
+				console.log('[IAP] requestPurchase (v14) failed, trying legacy shape:', shapeErr?.message || shapeErr);
+				await RNIap.requestPurchase({ sku, andDangerouslyFinishTransactionAutomaticallyIOS: false });
+				console.log('[IAP] ✅ requestPurchase (legacy) called successfully');
+			}
 		} else {
 			console.error('[IAP] ❌ No purchase method available!');
 			throw new Error('IAP API is not available in this environment');
