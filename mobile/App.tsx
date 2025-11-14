@@ -757,7 +757,7 @@ export default function App() {
               </Text>
             </Text>
 
-            <Text style={styles.infoSmall}>Contact: support@example.com</Text>
+            <Text style={styles.infoSmall}>Contact: asifseferov00@gmail.com</Text>
           </ScrollView>
         </View>
       </Modal>
