@@ -13,4 +13,3 @@ Testing tips
 Environment notes
 
 - If EXPO_PUBLIC_IAP_DISABLED=true, IAP init is skipped. The Paywall will still be shown for unsubscribed users, but purchases won’t work in that build.
- 

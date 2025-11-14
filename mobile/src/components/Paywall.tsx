@@ -1,5 +1,5 @@
 ﻿import React, { useEffect, useState } from 'react';
-import { Modal, View, Text, StyleSheet, Pressable, Platform, ScrollView, Linking } from 'react-native';
+import { Modal, View, Text, StyleSheet, Pressable, Platform, ScrollView, Linking, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 type Props = {
@@ -7,11 +7,14 @@ type Props = {
   onClose: () => void;
   onSubscribeMonthly: () => void;
   onSubscribeYearly: () => void;
+  onRestore?: () => void;
 };
 
-export default function Paywall({ visible, onClose, onSubscribeMonthly, onSubscribeYearly }: Props) {
+export default function Paywall({ visible, onClose, onSubscribeMonthly, onSubscribeYearly, onRestore }: Props) {
   const [canClose, setCanClose] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'yearly'>('yearly');
+  const [subscribing, setSubscribing] = useState(false);
+  const [restoring, setRestoring] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
@@ -20,12 +23,26 @@ export default function Paywall({ visible, onClose, onSubscribeMonthly, onSubscr
     return () => clearTimeout(t);
   }, [visible]);
 
-  const handleStartTrial = () => {
-    if (selectedPlan === 'monthly') {
-      onSubscribeMonthly();
-    } else {
-      onSubscribeYearly();
+  const handleStartTrial = async () => {
+    if (subscribing || restoring) return;
+    setSubscribing(true);
+    try {
+      if (selectedPlan === 'monthly') {
+        await onSubscribeMonthly();
+      } else {
+        await onSubscribeYearly();
+      }
+    } catch (error) {
+      console.error('Purchase error in Paywall:', error);
+    } finally {
+      setSubscribing(false);
     }
+  };
+
+  const handleRestore = () => {
+    if (restoring || subscribing || !onRestore) return;
+    setRestoring(true);
+    Promise.resolve(onRestore()).finally(() => setRestoring(false));
   };
 
   return (
@@ -55,6 +72,7 @@ export default function Paywall({ visible, onClose, onSubscribeMonthly, onSubscr
             <Pressable
               style={[styles.planCard, selectedPlan === 'monthly' && styles.planCardSelected]}
               onPress={() => setSelectedPlan('monthly')}
+              disabled={subscribing || restoring}
             >
               {selectedPlan === 'monthly' && <View style={styles.glowEffect} />}
               <View style={styles.trialBadge}>
@@ -75,6 +93,7 @@ export default function Paywall({ visible, onClose, onSubscribeMonthly, onSubscr
             <Pressable
               style={[styles.planCard, selectedPlan === 'yearly' && styles.planCardSelected]}
               onPress={() => setSelectedPlan('yearly')}
+              disabled={subscribing || restoring}
             >
               {selectedPlan === 'yearly' && <View style={styles.glowEffect} />}
               <View style={styles.trialBadge}>
@@ -98,9 +117,34 @@ export default function Paywall({ visible, onClose, onSubscribeMonthly, onSubscr
 
         {/* Sticky Subscribe Button */}
         <View style={styles.stickyButtonContainer}>
-          <Pressable style={styles.subscribeButton} onPress={handleStartTrial}>
-            <Text style={styles.subscribeButtonText}>Start Free Trial</Text>
+          <Pressable
+            style={({ pressed }) => [
+              styles.subscribeButton,
+              pressed && !(subscribing || restoring) && styles.subscribeButtonPressed,
+              (subscribing || restoring) && styles.subscribeButtonDisabled,
+            ]}
+            onPress={handleStartTrial}
+            disabled={subscribing || restoring}
+          >
+            {subscribing ? (
+              <ActivityIndicator color="#000" size="small" />
+            ) : (
+              <Text style={styles.subscribeButtonText}>Start Free Trial</Text>
+            )}
           </Pressable>
+          {onRestore ? (
+            <Pressable 
+              style={[styles.restoreLink, (restoring || subscribing) && styles.restoreLinkDisabled]}
+              onPress={handleRestore}
+              disabled={restoring || subscribing}
+            >
+              {restoring ? (
+                <ActivityIndicator color="#D4AF37" size="small" />
+              ) : (
+                <Text style={styles.restoreLinkText}>Restore Purchases</Text>
+              )}
+            </Pressable>
+          ) : null}
           
           {/* Terms below button */}
           <Text style={styles.terms}>
@@ -292,6 +336,13 @@ const styles = StyleSheet.create({
     elevation: 8,
     marginBottom: 12,
   },
+  subscribeButtonPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.98 }],
+  },
+  subscribeButtonDisabled: {
+    opacity: 0.7,
+  },
   subscribeButtonText: {
     fontSize: 17,
     fontWeight: 'bold',
@@ -303,6 +354,18 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 18,
     marginBottom: 12,
+  },
+  restoreLink: {
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  restoreLinkDisabled: {
+    opacity: 0.6,
+  },
+  restoreLinkText: {
+    color: '#D4AF37',
+    fontSize: 14,
+    fontWeight: '700',
   },
   termsLink: {
     color: '#D4AF37',

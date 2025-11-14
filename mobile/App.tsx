@@ -8,7 +8,7 @@ import { StatusBar } from 'expo-status-bar';
 import ResultView from './src/components/ResultView';
 import Paywall from './src/components/Paywall';
 import { getSubscriptionState, incrementFreeCount, setSubscribed, setTrialIfFirstOpen, startLocalTrial, clearAllData } from './src/store/subscription';
-import { initIAP, requestPlan, restorePurchases, collectIapDebugInfo } from './src/services/iap';
+import { initIAP, requestPlan, restorePurchases, collectIapDebugInfo, checkActiveSubscriptionQuiet } from './src/services/iap';
 import type { IapDebugInfo } from './src/services/iap';
 import { uploadImage } from './src/api/client';
 import type { AnalysisResult } from './src/types';
@@ -68,9 +68,15 @@ export default function App() {
         }
       } catch {}
 
-      // Try a silent restore so existing subscribers aren't prompted
+      // Try a quiet active-subscription check to avoid sign-in prompts
       try {
-        await restorePurchases();
+        const active = await checkActiveSubscriptionQuiet();
+        if (active) {
+          const st = await getSubscriptionState();
+          setIsSubscribed(true);
+          setFreeUsesLeft(Math.max(0, 1 - st.freeAnalysesUsed));
+          return; // Skip showing paywall
+        }
       } catch {}
 
       // Read latest state and decide whether to show paywall
@@ -268,12 +274,25 @@ export default function App() {
 
   const analyze = async () => {
     if (!imageUri) return;
+    // Prevent overlapping analyzes if the button is tapped rapidly before state updates
+    if (loading) return;
+
+    // Helper: timeout wrapper so hanging network requests release UI state
+    const withTimeout = <T,>(p: Promise<T>, ms: number) => {
+      return new Promise<T>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('Analysis timed out. Please try again.')), ms);
+        p.then((val) => { clearTimeout(timer); resolve(val); })
+         .catch((err) => { clearTimeout(timer); reject(err); });
+      });
+    };
+
+    setLoading(true); // show overlay immediately
     try {
       // Gate: free users can analyze once per day; subscribers/trial have unlimited
       const sub = await getSubscriptionState();
       setIsSubscribed(!!sub.isSubscribed);
       setFreeUsesLeft(Math.max(0, 1 - sub.freeAnalysesUsed));
-      
+
       // Daily free limit: 1 per day
       if (!sub.isSubscribed && sub.freeAnalysesUsed >= 1) {
         Alert.alert(
@@ -284,10 +303,11 @@ export default function App() {
             { text: 'Upgrade Now', onPress: () => setPaywallVisible(true) }
           ]
         );
+        // Immediately clear loading since we showed overlay before gating
+        setLoading(false);
         return;
       }
 
-      setLoading(true);
       // Always convert to fast JPEG to avoid HEIC/unsupported types and reduce payload size.
       // Limit max width to ~1400px for faster uploads; keep aspect ratio.
       const jpeg = await ImageManipulator.manipulateAsync(
@@ -303,9 +323,10 @@ export default function App() {
 
       const form = new FormData();
       // @ts-ignore - React Native FormData file shape
-  form.append('image', { uri: uploadUri, name: uploadName, type: uploadMime });
+      form.append('image', { uri: uploadUri, name: uploadName, type: uploadMime });
 
-      const data: AnalysisResult = await uploadImage(form as any);
+      // Add a 60s timeout to prevent indefinite hanging (increased for slower connections)
+      const data: AnalysisResult = await withTimeout(uploadImage(form as any), 60000);
       setResult(data);
 
       // Increment free count on success if not subscribed
@@ -316,7 +337,25 @@ export default function App() {
         setFreeUsesLeft(Math.max(0, 1 - updatedState.freeAnalysesUsed));
       }
     } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Unknown error occurred');
+      console.error('Analysis error:', e);
+      const errorMessage = e?.message || 'Unknown error occurred';
+      
+      // Provide more helpful error messages
+      if (errorMessage.includes('timed out')) {
+        Alert.alert(
+          'Request Timed Out',
+          'The analysis took too long. Please check your internet connection and try again.',
+          [{ text: 'OK' }]
+        );
+      } else if (errorMessage.includes('Could not reach server')) {
+        Alert.alert(
+          'Connection Error',
+          'Unable to connect to the server. Please check your internet connection.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert('Error', errorMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -452,58 +491,110 @@ export default function App() {
         }}
         onSubscribeMonthly={async () => {
           try {
-            setPurchaseLoading(true);
             const check = await ensureProductAvailable('monthly');
-            if (!check.allow) return;
+            if (!check.allow) {
+              return;
+            }
             const ok = await requestPlan('monthly', { force: check.force });
             if (ok) {
+              // Update state immediately
               const s = await getSubscriptionState();
               setIsSubscribed(!!s.isSubscribed);
+              setFreeUsesLeft(Math.max(0, 1 - s.freeAnalysesUsed));
+              // Close paywall first
               setPaywallVisible(false);
-              Alert.alert('Success!', 'You now have unlimited access to all features.');
+              // Small delay to ensure modal is closed before showing alert
+              setTimeout(() => {
+                Alert.alert('Success!', 'You now have unlimited access to all features.');
+              }, 300);
               return;
             }
             throw new Error('Purchase did not complete');
           } catch (e: any) {
+            // Don't show error if user cancelled
+            if (e?.message === 'Purchase was cancelled') {
+              console.log('User cancelled purchase');
+              setPaywallVisible(false);
+              return;
+            }
             // Show actual error for debugging
             console.error('Monthly IAP Error:', e);
             const code = e?.code ? ` (code: ${e.code})` : '';
-            Alert.alert(
-              'Purchase Error',
-              (e?.message || 'Unable to process purchase. Please try again.') + code,
-              [{ text: 'OK' }]
-            );
             setPaywallVisible(false);
-          } finally {
-            setPurchaseLoading(false);
+            // Small delay before showing alert
+            setTimeout(() => {
+              Alert.alert(
+                'Purchase Error',
+                (e?.message || 'Unable to process purchase. Please try again.') + code,
+                [{ text: 'OK' }]
+              );
+            }, 300);
           }
         }}
         onSubscribeYearly={async () => {
           try {
-            setPurchaseLoading(true);
             const check = await ensureProductAvailable('yearly');
-            if (!check.allow) return;
+            if (!check.allow) {
+              return;
+            }
             const ok = await requestPlan('yearly', { force: check.force });
             if (ok) {
+              // Update state immediately
               const s = await getSubscriptionState();
               setIsSubscribed(!!s.isSubscribed);
+              setFreeUsesLeft(Math.max(0, 1 - s.freeAnalysesUsed));
+              // Close paywall first
               setPaywallVisible(false);
-              Alert.alert('Success!', 'You now have unlimited access to all features.');
+              // Small delay to ensure modal is closed before showing alert
+              setTimeout(() => {
+                Alert.alert('Success!', 'You now have unlimited access to all features.');
+              }, 300);
               return;
             }
             throw new Error('Purchase did not complete');
           } catch (e: any) {
+            // Don't show error if user cancelled
+            if (e?.message === 'Purchase was cancelled') {
+              console.log('User cancelled purchase');
+              setPaywallVisible(false);
+              return;
+            }
             // Show actual error for debugging
             console.error('Yearly IAP Error:', e);
             const code = e?.code ? ` (code: ${e.code})` : '';
-            Alert.alert(
-              'Purchase Error',
-              (e?.message || 'Unable to process purchase. Please try again.') + code,
-              [{ text: 'OK' }]
-            );
             setPaywallVisible(false);
-          } finally {
-            setPurchaseLoading(false);
+            // Small delay before showing alert
+            setTimeout(() => {
+              Alert.alert(
+                'Purchase Error',
+                (e?.message || 'Unable to process purchase. Please try again.') + code,
+                [{ text: 'OK' }]
+              );
+            }, 300);
+          }
+        }}
+        onRestore={async () => {
+          try {
+            const restored = await restorePurchases();
+            const s = await getSubscriptionState();
+            setIsSubscribed(!!s.isSubscribed);
+            setFreeUsesLeft(Math.max(0, 1 - s.freeAnalysesUsed));
+            if (restored || s.isSubscribed) {
+              setPaywallVisible(false);
+              setTimeout(() => {
+                Alert.alert('Restored', 'Your subscription has been restored.');
+              }, 300);
+            } else {
+              setPaywallVisible(false);
+              setTimeout(() => {
+                Alert.alert('No purchases', 'No active purchases found for this Apple account.');
+              }, 300);
+            }
+          } catch (e: any) {
+            setPaywallVisible(false);
+            setTimeout(() => {
+              Alert.alert('Restore failed', e?.message || 'Unable to restore purchases.');
+            }, 300);
           }
         }}
       />

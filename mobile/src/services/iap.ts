@@ -285,9 +285,13 @@ export async function requestPlan(plan: Plan, opts?: { force?: boolean }): Promi
 		} catch (err: any) {
 			console.warn('[IAP] Unable to refresh products for purchase:', err?.message || err);
 		}
-		const newList: string[] = (cachedSubs || []).map((p: any) => p.productId || p.productIdentifier || p.id).filter(Boolean);
+	const newList: string[] = (cachedSubs || []).map((p: any) => p.productId || p.productIdentifier || p.id).filter(Boolean);
 		console.log('[IAP] Products after refresh attempt:', newList);
-		// Even if not listed, proceed with purchase request; Store can still handle it.
+		if (!newList.includes(sku) && !opts?.force) {
+			throw new Error(
+				'Product not found on App Store. Confirm the subscriptions are attached to this app version in App Store Connect, their status is Ready to Submit+, and agreements/tax/banking are active.'
+			);
+		}
 	}
 
 	try {
@@ -310,7 +314,13 @@ export async function requestPlan(plan: Plan, opts?: { force?: boolean }): Promi
 				called = true;
 				console.log('[IAP] ✅ requestSubscription (v14) called successfully');
 			} catch (shapeErr: any) {
-				console.log('[IAP] requestSubscription (v14) failed, falling back to legacy:', shapeErr?.message || shapeErr);
+				const msg = String(shapeErr?.message || shapeErr || '');
+				if (/Missing purchase request configuration|Invalid request for iOS/i.test(msg)) {
+					console.log('[IAP] Falling back to legacy requestSubscription shape');
+				} else {
+					// If it's another error, rethrow and let outer catch handle
+					throw shapeErr;
+				}
 			}
 			if (!called) {
 				// Legacy shape used by older RN-IAP
@@ -406,4 +416,21 @@ export async function restorePurchases(): Promise<boolean> {
 // For convenience in UI
 export function isIapReady() {
 	return initialized;
+}
+
+// Best-effort check for active subscription without forcing an iTunes login prompt.
+// Avoids getReceiptIOS; relies on store helper which often works without prompting.
+export async function checkActiveSubscriptionQuiet(): Promise<boolean> {
+	try {
+		if (!initialized) await initIAP();
+		if (!initialized) return false;
+		const active = await RNIap.hasActiveSubscriptions(Object.values(SUBS_IDS));
+		if (active) {
+			await setSubscribed(true);
+			return true;
+		}
+		return false;
+	} catch {
+		return false;
+	}
 }
