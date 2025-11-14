@@ -79,7 +79,7 @@ export default async function handler(req, res) {
     );
 
     const completion = await client.chat.completions.create({
-      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+      model: process.env.OPENAI_MODEL || 'gpt-4o',
       temperature: 0.1,
       messages: [
         { role: 'system', content: 'You are a precise vision OCR+summarizer. Return ONLY strict JSON without code fences.' },
