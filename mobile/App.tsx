@@ -8,8 +8,7 @@ import { StatusBar } from 'expo-status-bar';
 import ResultView from './src/components/ResultView';
 import Paywall from './src/components/Paywall';
 import { getSubscriptionState, incrementFreeCount, setSubscribed, setTrialIfFirstOpen, startLocalTrial, clearAllData } from './src/store/subscription';
-import { initIAP, requestPlan, restorePurchases, collectIapDebugInfo, checkActiveSubscriptionQuiet } from './src/services/iap';
-import type { IapDebugInfo } from './src/services/iap';
+import { initIAP, requestPlan, checkActiveSubscriptionQuiet } from './src/services/iap';
 import { uploadImage } from './src/api/client';
 import type { AnalysisResult } from './src/types';
 
@@ -32,10 +31,6 @@ export default function App() {
   const [privacyVisible, setPrivacyVisible] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [freeUsesLeft, setFreeUsesLeft] = useState(1);
-  const [iapDebugVisible, setIapDebugVisible] = useState(false);
-  const [iapDebugLoading, setIapDebugLoading] = useState(false);
-  const [iapDebugInfo, setIapDebugInfo] = useState<IapDebugInfo | null>(null);
-  const [purchaseLoading, setPurchaseLoading] = useState(false);
   
   // Premium animations
   const glowAnim = React.useRef(new Animated.Value(0)).current;
@@ -145,39 +140,6 @@ export default function App() {
       clearTimeout(t2);
     };
   }, [loading]);
-
-  const ensureProductAvailable = useCallback(async (plan: 'monthly' | 'yearly') => {
-    try {
-      const snapshot = await collectIapDebugInfo();
-      setIapDebugInfo(snapshot);
-      const sku = plan === 'monthly' ? snapshot.envMonthlyId : snapshot.envYearlyId;
-      const availableSkus = snapshot.cachedProducts.map((p) => p.productId);
-      if (!sku) {
-        Alert.alert(
-          'Missing product ID',
-          `The ${plan} product ID is empty in this build. Double-check your .env and EAS/Expo config before rebuilding.`
-        );
-        return { allow: false, force: false } as const;
-      }
-      if (!availableSkus.includes(sku)) {
-        // Provide a detailed, copyable message and allow the user to try anyway
-        return await new Promise<{ allow: boolean; force: boolean }>((resolve) => {
-          Alert.alert(
-            'Purchases not ready',
-            `The App Store did not return this subscription for this build.\n\nPlan: ${plan}\nSKU: ${sku}\nReturned (${availableSkus.length}): ${availableSkus.join(', ') || '(none)'}\nInitialized: ${snapshot.initialized ? 'yes' : 'no'}\nPlatform: ${Platform.OS}`,
-            [
-              { text: 'Cancel', style: 'cancel', onPress: () => resolve({ allow: false, force: false }) },
-              { text: 'Try anyway', onPress: () => resolve({ allow: true, force: true }) },
-            ]
-          );
-        });
-      }
-      return { allow: true, force: false } as const;
-    } catch (err: any) {
-      Alert.alert('Purchase Error', err?.message || 'Unable to verify in-app purchase configuration.');
-      return { allow: false, force: false } as const;
-    }
-  }, []);
 
   const openSourceChooser = () => {
     setSourceSheetOpen(true);
@@ -491,11 +453,7 @@ export default function App() {
         }}
         onSubscribeMonthly={async () => {
           try {
-            const check = await ensureProductAvailable('monthly');
-            if (!check.allow) {
-              return;
-            }
-            const ok = await requestPlan('monthly', { force: check.force });
+            const ok = await requestPlan('monthly');
             if (ok) {
               // Update state immediately
               const s = await getSubscriptionState();
@@ -517,15 +475,14 @@ export default function App() {
               setPaywallVisible(false);
               return;
             }
-            // Show actual error for debugging
+            // Show actual error
             console.error('Monthly IAP Error:', e);
-            const code = e?.code ? ` (code: ${e.code})` : '';
             setPaywallVisible(false);
             // Small delay before showing alert
             setTimeout(() => {
               Alert.alert(
                 'Purchase Error',
-                (e?.message || 'Unable to process purchase. Please try again.') + code,
+                e?.message || 'Unable to process purchase. Please try again.',
                 [{ text: 'OK' }]
               );
             }, 300);
@@ -533,11 +490,7 @@ export default function App() {
         }}
         onSubscribeYearly={async () => {
           try {
-            const check = await ensureProductAvailable('yearly');
-            if (!check.allow) {
-              return;
-            }
-            const ok = await requestPlan('yearly', { force: check.force });
+            const ok = await requestPlan('yearly');
             if (ok) {
               // Update state immediately
               const s = await getSubscriptionState();
@@ -559,43 +512,27 @@ export default function App() {
               setPaywallVisible(false);
               return;
             }
-            // Show actual error for debugging
+            // Show actual error
             console.error('Yearly IAP Error:', e);
-            const code = e?.code ? ` (code: ${e.code})` : '';
             setPaywallVisible(false);
             // Small delay before showing alert
             setTimeout(() => {
               Alert.alert(
                 'Purchase Error',
-                (e?.message || 'Unable to process purchase. Please try again.') + code,
+                e?.message || 'Unable to process purchase. Please try again.',
                 [{ text: 'OK' }]
               );
             }, 300);
           }
         }}
-        onRestore={async () => {
-          try {
-            const restored = await restorePurchases();
-            const s = await getSubscriptionState();
-            setIsSubscribed(!!s.isSubscribed);
-            setFreeUsesLeft(Math.max(0, 1 - s.freeAnalysesUsed));
-            if (restored || s.isSubscribed) {
-              setPaywallVisible(false);
-              setTimeout(() => {
-                Alert.alert('Restored', 'Your subscription has been restored.');
-              }, 300);
-            } else {
-              setPaywallVisible(false);
-              setTimeout(() => {
-                Alert.alert('No purchases', 'No active purchases found for this Apple account.');
-              }, 300);
-            }
-          } catch (e: any) {
-            setPaywallVisible(false);
-            setTimeout(() => {
-              Alert.alert('Restore failed', e?.message || 'Unable to restore purchases.');
-            }, 300);
-          }
+        onRestore={() => {
+          // Restore purchases is handled through iOS Settings
+          // Direct users there instead of programmatic restore
+          Alert.alert(
+            'Restore Purchases',
+            'Your purchases are automatically restored when you sign in with your Apple ID. If you have issues, please check Settings → Apple ID → Subscriptions.',
+            [{ text: 'OK' }]
+          );
         }}
       />
 
@@ -692,17 +629,6 @@ export default function App() {
         </View>
       </Modal>
 
-      {/* Purchase processing overlay */}
-      <Modal visible={purchaseLoading} transparent animationType="fade">
-        <View style={styles.loadingBackdrop}>
-          <View style={styles.loadingCard}>
-            <ActivityIndicator color="#D4AF37" size="large" />
-            <Text style={styles.loadingTitle}>Processing purchase…</Text>
-            <Text style={styles.loadingSubtitle}>Confirm with the App Store if prompted</Text>
-          </View>
-        </View>
-      </Modal>
-
       {/* Settings modal */}
       <Modal
         transparent
@@ -713,56 +639,10 @@ export default function App() {
         <Pressable style={styles.sheetBackdrop} onPress={() => setSettingsVisible(false)} />
         <View style={styles.sheetContainer}>
           <Pressable style={styles.sheetButton} onPress={() => { setSettingsVisible(false); setManageSubVisible(true); }}>
-            <Text style={styles.sheetButtonText}>Manage / Cancel Subscription</Text>
+            <Text style={styles.sheetButtonText}>Manage Subscription</Text>
           </Pressable>
           <Pressable style={styles.sheetButton} onPress={() => { setSettingsVisible(false); setPrivacyVisible(true); }}>
             <Text style={styles.sheetButtonText}>Privacy Policy</Text>
-          </Pressable>
-          <Pressable
-            style={styles.sheetButton}
-            onPress={async () => {
-              setSettingsVisible(false);
-              setIapDebugVisible(true);
-              setIapDebugLoading(true);
-              try {
-                const snapshot = await collectIapDebugInfo();
-                setIapDebugInfo(snapshot);
-              } catch (err: any) {
-                const fallback: IapDebugInfo = {
-                  initialized: false,
-                  iapDisabled: false,
-                  envMonthlyId: (process as any)?.env?.EXPO_PUBLIC_IAP_MONTHLY_ID,
-                  envYearlyId: (process as any)?.env?.EXPO_PUBLIC_IAP_YEARLY_ID,
-                  cachedProducts: [],
-                  platform: Platform.OS,
-                  subscriptionCount: 0,
-                  hints: [err?.message || 'Failed to collect IAP debug info.'],
-                  timestamp: new Date().toISOString(),
-                };
-                setIapDebugInfo(fallback);
-              } finally {
-                setIapDebugLoading(false);
-              }
-            }}
-          >
-            <Text style={styles.sheetButtonText}>Debug Purchases</Text>
-          </Pressable>
-          <Pressable
-            style={styles.sheetButton}
-            onPress={async () => {
-              try {
-                const restored = await restorePurchases();
-                const s = await getSubscriptionState();
-                setIsSubscribed(!!s.isSubscribed);
-                Alert.alert(restored ? 'Restored' : 'No purchases', restored ? 'Your subscription has been restored.' : 'No active purchases found for this Apple/Google account.');
-              } catch (e: any) {
-                Alert.alert('Restore failed', e?.message || 'Unable to restore purchases.');
-              } finally {
-                setSettingsVisible(false);
-              }
-            }}
-          >
-            <Text style={styles.sheetButtonText}>Restore Purchases</Text>
           </Pressable>
           <Pressable style={[styles.sheetButton, styles.sheetCancel]} onPress={() => setSettingsVisible(false)}>
             <Text style={[styles.sheetButtonText, styles.sheetCancelText]}>Close</Text>
@@ -804,70 +684,6 @@ export default function App() {
             <Text style={styles.infoSmall}>
               Refunds are handled by Apple at reportaproblem.apple.com
             </Text>
-          </ScrollView>
-        </View>
-      </Modal>
-
-      {/* IAP Debug - full screen */}
-      <Modal
-        visible={iapDebugVisible}
-        animationType="slide"
-        presentationStyle="fullScreen"
-        onRequestClose={() => setIapDebugVisible(false)}
-      >
-        <View style={styles.infoRoot}>
-          <View style={styles.infoHeader}>
-            <Pressable onPress={() => setIapDebugVisible(false)} style={styles.infoClose} hitSlop={12}>
-              <Text style={styles.infoCloseText}>Close</Text>
-            </Pressable>
-            <Text style={styles.infoTitle}>Purchase Debug Info</Text>
-          </View>
-          <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.infoContent}>
-            {iapDebugLoading ? (
-              <View style={{ alignItems: 'center', gap: 12 }}>
-                <ActivityIndicator color="#D4AF37" size="small" />
-                <Text style={styles.infoParagraph}>Collecting data…</Text>
-              </View>
-            ) : (
-              <>
-                <Text style={styles.infoParagraph}>Collected: {iapDebugInfo?.timestamp ?? '—'}</Text>
-                <Text style={styles.infoParagraph}>Platform: {Platform.OS}</Text>
-                <Text style={styles.infoParagraph}>Initialized: {iapDebugInfo?.initialized ? 'Yes' : 'No'}</Text>
-                <Text style={styles.infoParagraph}>IAP Disabled via env: {iapDebugInfo?.iapDisabled ? 'Yes' : 'No'}</Text>
-                <Text style={styles.infoParagraph}>Monthly SKU (env): {iapDebugInfo?.envMonthlyId ?? '—'}</Text>
-                <Text style={styles.infoParagraph}>Yearly SKU (env): {iapDebugInfo?.envYearlyId ?? '—'}</Text>
-                <Text style={styles.infoParagraph}>Products returned: {iapDebugInfo?.subscriptionCount ?? 0}</Text>
-                {(iapDebugInfo?.cachedProducts ?? []).length === 0 ? (
-                  <Text style={styles.infoParagraph}>No products fetched from store.</Text>
-                ) : (
-                  (iapDebugInfo?.cachedProducts ?? []).map((prod, idx) => (
-                    <View key={`${prod.productId}-${idx}`} style={{ marginBottom: 8 }}>
-                      <Text style={styles.infoParagraph}>• {prod.productId}</Text>
-                      {prod.title ? (
-                        <Text style={styles.infoSmall}>{prod.title}{prod.price ? ` — ${prod.price}` : ''}</Text>
-                      ) : null}
-                    </View>
-                  ))
-                )}
-                {Array.isArray(iapDebugInfo?.rawProducts) && iapDebugInfo!.rawProducts!.length > 0 ? (
-                  <>
-                    <Text style={[styles.infoParagraph, { marginTop: 12 }]}>Raw products (sample):</Text>
-                    {(iapDebugInfo!.rawProducts || []).slice(0, 3).map((obj, i) => (
-                      <Text key={`raw-${i}`} style={styles.infoSmall}>
-                        {(() => {
-                          try { return JSON.stringify(obj, null, 2); } catch { return String(obj); }
-                        })()}
-                      </Text>
-                    ))}
-                  </>
-                ) : null}
-                {(iapDebugInfo?.hints ?? []).map((hint, idx) => (
-                  <Text key={idx} style={[styles.infoParagraph, { color: '#F5A623' }]}>
-                    Hint {idx + 1}: {hint}
-                  </Text>
-                ))}
-              </>
-            )}
           </ScrollView>
         </View>
       </Modal>
